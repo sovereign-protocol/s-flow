@@ -1,0 +1,36 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy: {matrix: {python: ["3.10", "3.14"]}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "${{ matrix.python }}"}
+      - run: python -m pip install ".[test]"
+      - run: python -m pip check
+      - run: python -m pytest -q
+
+  templates:
+    # The bundled BPMN definitions are this application's substance, and the
+    # test suite exercises the interpreter rather than the XML. The validator
+    # soft-skips when lxml is missing, so it is installed here explicitly -
+    # without it the step would pass while checking nothing.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install ".[test]" lxml
+      - name: Validate the bundled workflow definitions
+        shell: bash
+        run: |
+          output=$(python scripts/validate_workflow_templates.py 2>&1)
+          echo "$output"
+          # The script reports a missing dependency on stdout and still exits
+          # 0, which would make this job green on an unvalidated tree.
+          if echo "$output" | grep -qi "requires lxml"; then
+            echo "::error::lxml missing - templates were not validated"
+            exit 1
+          fi
