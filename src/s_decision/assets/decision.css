@@ -1,0 +1,68 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #181b20;
+  color: #edf0f3;
+}
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr);
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.panel {
+  border: 1px solid #3b424b;
+  border-radius: 0.75rem;
+  background: #22272e;
+  padding: 1rem;
+}
+
+form,
+label {
+  display: grid;
+  gap: 0.5rem;
+}
+
+form {
+  gap: 1rem;
+}
+
+input,
+select,
+button {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.65rem;
+  color: inherit;
+  background: #181b20;
+  border: 1px solid #59616d;
+  border-radius: 0.4rem;
+}
+
+button {
+  cursor: pointer;
+  background: #315b4c;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem 1rem;
+}
+
+dd {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+}
+

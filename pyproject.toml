@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "s-decision"
+version = "0.1.0a1"
+description = "Asynchronous consent-based decision processes for Sovereign Core"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+keywords = ["local-first", "consent", "decision-making", "sovereign-protocol"]
+dependencies = [
+  "sovereign-protocol>=0.1.5,<0.2",
+  "consent-workflow-profile>=0.2.0a1,<0.3",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+desktop = ["pywebview>=5,<6"]
+
+[project.scripts]
+s-decision-desktop = "s_decision.desktop:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["s_decision*"]
+
+[tool.setuptools.package-data]
+"s_decision.assets" = ["*.css", "*.html", "*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

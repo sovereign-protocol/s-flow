@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>S-decision</title>
+    <link rel="stylesheet" href="/shared.css" />
+    <link rel="stylesheet" href="/apps/decision/styles.css" />
+  </head>
+  <body>
+    <header><div id="shell"></div></header>
+    <main>
+      <section class="panel">
+        <h1 id="title">S-decision</h1>
+        <p id="position">Create or accept a process to begin.</p>
+        <dl id="summary"></dl>
+      </section>
+      <section class="panel">
+        <h2>New process</h2>
+        <form id="create">
+          <label>Title <input id="newTitle" required /></label>
+          <label
+            >Template
+            <select id="template">
+              <option value="integrative-election">Integrative election</option>
+              <option value="idmp">Integrative decision-making</option>
+              <option value="minimal-consent">Consent decision</option>
+            </select>
+          </label>
+          <button>Create</button>
+        </form>
+      </section>
+    </main>
+    <script src="/shared-api.js"></script>
+    <script src="/shared.js"></script>
+    <script>
+      const api = SovereignApi.request;
+
+      async function refresh() {
+        const payload = await api("/api/decision/process");
+        const process = payload.process;
+        SovereignShell.setTopicSelector({
+          label: "Process",
+          topics: (payload.processes || []).map((item) => ({
+            uuid: item.uuid,
+            title: item.title,
+          })),
+          selectedUuid: process?.uuid,
+          onSelect: async (processUuid) => {
+            await api("/api/decision/processes/select", {
+              process_uuid: processUuid,
+            });
+            await refresh();
+          },
+          onRename: async (title) => {
+            await api("/api/decision/processes/rename", {
+              process_uuid: process.uuid,
+              title,
+              expected_content_hash: process.content_hash,
+            });
+            await refresh();
+          },
+        });
+        if (!process) return;
+        const data = process.data || {};
+        document.getElementById("title").textContent = data.title || "Untitled process";
+        document.getElementById("position").textContent = `Now: ${data.current_stage || "Setup"}`;
+        const summary = document.getElementById("summary");
+        summary.replaceChildren();
+        for (const [label, value] of [
+          ["Template", data.definition_id],
+          ["Last completed", data.last_completed || "Nothing yet"],
+          ["People assigned", payload.assignments.length],
+          ["Agenda items", payload.agenda_items.length],
+        ]) {
+          const term = document.createElement("dt");
+          term.textContent = label;
+          const detail = document.createElement("dd");
+          detail.textContent = value;
+          summary.append(term, detail);
+        }
+      }
+
+      document.getElementById("create").onsubmit = async (event) => {
+        event.preventDefault();
+        await api("/api/decision/processes/create", {
+          title: document.getElementById("newTitle").value,
+          definition_id: document.getElementById("template").value,
+          definition_version: "0.2.0",
+        });
+        document.getElementById("newTitle").value = "";
+        await refresh();
+      };
+      refresh();
+    </script>
+  </body>
+</html>
