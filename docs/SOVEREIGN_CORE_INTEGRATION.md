@@ -1,12 +1,12 @@
-# S-decision — Sovereign Core integration
+# S-Flow — Sovereign Core integration
 
 Status: application scaffold and first Core-backed topic implemented
 
 Application identifiers:
 
-- display name: `S-decision`;
+- display name: `S-Flow`;
 - application ID: `decision`;
-- Python package: `s_decision`.
+- Python package: `s_flow`.
 
 ## Ownership
 
@@ -20,7 +20,7 @@ Application identifiers:
 | Topic membership and liveness     | Core collaboration view         |
 | Agenda items                      | Core Session agenda API         |
 | Browser optimism and retries      | Core Session View               |
-| Cockpit presentation              | Personal Cockpit via app facade |
+| Cockpit presentation              | S-Cockpit via app facade |
 
 ## Topic model
 
@@ -72,7 +72,7 @@ Use `Session.create_agenda_item`, `delete_agenda_item`,
 `set_agenda_item_priority` and `move_agenda_item`. The workflow app only checks
 that the item belongs to its process topic and exposes app-scoped routes.
 
-## Personal Cockpit
+## S-Cockpit
 
 The workflow application exposes facade API version 1 with detached queries
 and commands. At minimum:
@@ -86,7 +86,7 @@ The first tile shows title, process template, current stage, “required from
 me”, outstanding people, agenda count and divergence/status. Expanded mode can
 show the latest completed step and current work.
 
-Personal Cockpit currently has explicit Kanban and Agreement adapters. Adding
+S-Cockpit currently has explicit Kanban and Agreement adapters. Adding
 a third hard-coded branch is acceptable for the MVP, but it will not scale.
 After this integration proves the common fields, extract a generic versioned
 tile-provider contract rather than changing Cockpit for every future app.

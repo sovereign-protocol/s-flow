@@ -1,4 +1,4 @@
-"""S-decision Sovereign application."""
+"""S-Flow Sovereign application."""
 
 __version__ = "0.1.0a1"
 

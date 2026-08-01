@@ -97,7 +97,7 @@ A workflow instance contains:
 ### 4.1 Production application boundary
 
 The production implementation is a new Sovereign application alongside
-S-Kanban and S-Agreement. It does not own a database, SFTP integration, a
+S-Initiative and S-Team. It does not own a database, SFTP integration, a
 participant directory, browser retry queues or a second concurrency system.
 
 - Each workflow instance is an assignment-scoped Core topic.
@@ -112,7 +112,7 @@ participant directory, browser retry queues or a second concurrency system.
   available people; explicit role assignments remain workflow data.
 - Core agenda items are children of the workflow topic.
 - A versioned application facade supplies workflow summaries and commands to
-  Personal Cockpit, which renders one tile per workflow instance.
+  S-Cockpit, which renders one tile per workflow instance.
 
 The in-memory runtime remains a definition interpreter and test oracle. It
 must be adapted to read and emit Core nodes rather than becoming a parallel
@@ -823,8 +823,8 @@ urn:s-protocol:consent-workflow:0.2
 ```
 
 Machine-readable reference templates and their JSON Schema response contracts
-are stored under `src/s_decision/workflow/templates` and
-`src/s_decision/workflow/schemas`.
+are stored under `src/s_flow/workflow/templates` and
+`src/s_flow/workflow/schemas`.
 
 ## 18. Runtime prototype
 

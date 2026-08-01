@@ -1,4 +1,4 @@
-"""S-decision manifest and Sovereign host wiring."""
+"""S-Flow manifest and Sovereign host wiring."""
 
 from sovereign import (
     ApplicationFacade,
@@ -8,17 +8,17 @@ from sovereign import (
 )
 
 from .controller import build_routes
-from .facade import decision_FACADE_API_VERSION, decisionFacade
-from .logic import decisionLogic
+from .facade import FLOW_FACADE_API_VERSION, FlowFacade
+from .logic import FlowLogic
 
 
 APPLICATION_MANIFEST = ApplicationManifest(
-    application_id="decision",
-    display_name="S-decision",
+    application_id="flow",
+    display_name="S-Flow",
     data_schema_version=1,
-    asset_package="s_decision.assets",
-    ui_file="decision.html",
-    css_file="decision.css",
+    asset_package="s_flow.assets",
+    ui_file="flow.html",
+    css_file="flow.css",
     icon=(
         '<path d="M5 4h14v16H5z"></path>'
         '<path d="M8 9l2 2 5-5"></path>'
@@ -28,7 +28,7 @@ APPLICATION_MANIFEST = ApplicationManifest(
 
 
 def create_application(services: ApplicationServices) -> ApplicationInstance:
-    logic = decisionLogic(
+    logic = FlowLogic(
         services.session,
         dict(services.settings),
         services.collaboration,
@@ -40,8 +40,8 @@ def create_application(services: ApplicationServices) -> ApplicationInstance:
         controllers=tuple(build_routes(logic, services)),
         facade=ApplicationFacade(
             application_id=APPLICATION_MANIFEST.application_id,
-            facade_api_version=decision_FACADE_API_VERSION,
-            api=decisionFacade(logic),
+            facade_api_version=FLOW_FACADE_API_VERSION,
+            api=FlowFacade(logic),
         ),
     )
 

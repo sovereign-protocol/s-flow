@@ -14,8 +14,8 @@ from .workflow import (
 from sovereign import ProtocolNode, Session, SessionResult
 
 
-RUNTIME_STATE_TYPE = "decision_runtime_state"
-RESPONSE_TYPE = "decision_response"
+RUNTIME_STATE_TYPE = "flow_runtime_state"
+RESPONSE_TYPE = "flow_response"
 
 
 class CoreWorkflowAdapter:
@@ -238,7 +238,7 @@ class CoreWorkflowAdapter:
     def _assignments(process: ProtocolNode) -> list[ProtocolNode]:
         return [
             child for child in process.live_children()
-            if child.data.get("type") == "decision_assignment"
+            if child.data.get("type") == "flow_assignment"
         ]
 
     def _role_assignments(self, process: ProtocolNode, definition) -> dict:

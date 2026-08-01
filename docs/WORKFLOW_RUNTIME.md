@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`s_decision.workflow` is a minimal definition interpreter and test oracle for
+`s_flow.workflow` is a minimal definition interpreter and test oracle for
 the three reference templates. It proves that the BPMN/CWP definitions can
 drive execution and the two required user projections without
 template-specific interface code. Production state belongs to Sovereign Core;
@@ -24,10 +24,10 @@ see `SOVEREIGN_CORE_INTEGRATION.md`.
 ## Example
 
 ```python
-from s_decision.workflow import WorkflowEngine, load_workflow
+from s_flow.workflow import WorkflowEngine, load_workflow
 
 definition = load_workflow(
-    "src/s_decision/workflow/templates/minimal-consent-decision.bpmn"
+    "src/s_flow/workflow/templates/minimal-consent-decision.bpmn"
 )
 engine = WorkflowEngine(definition)
 instance = engine.create_instance(
@@ -85,5 +85,5 @@ The tests execute:
   contracts, not the complete standard.
 - Full OMG BPMN XSD certification remains separate.
 
-S-decision's Core adapter stores runtime state and response records as protocol
+S-Flow's Core adapter stores runtime state and response records as protocol
 nodes; the workflow package does not introduce a separate persistence layer.

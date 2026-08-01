@@ -8,7 +8,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from s_decision.workflow import (  # noqa: E402
+from s_flow.workflow import (  # noqa: E402
     ResponseValidationError,
     TaskActionError,
     WorkflowEngine,
@@ -19,7 +19,7 @@ from s_decision.workflow import (  # noqa: E402
 )
 
 
-TEMPLATES = PROJECT_ROOT / "src" / "s_decision" / "workflow" / "templates"
+TEMPLATES = PROJECT_ROOT / "src" / "s_flow" / "workflow" / "templates"
 
 
 def open_task(instance, user_id: str, node_id: str):

@@ -1,4 +1,4 @@
-"""Core-backed process topics for S-decision."""
+"""Core-backed process topics for S-Flow."""
 
 from __future__ import annotations
 
@@ -13,10 +13,10 @@ from .workflow_adapter import (
 )
 
 
-decision_APPLICATION_ID = "decision"
-decision_APP_NAME = "S-decision"
-PROCESS_TYPE = "decision_process"
-ASSIGNMENT_TYPE = "decision_assignment"
+FLOW_APPLICATION_ID = "flow"
+FLOW_APP_NAME = "S-Flow"
+PROCESS_TYPE = "flow_process"
+ASSIGNMENT_TYPE = "flow_assignment"
 
 ROLE_TYPES = frozenset({
     "facilitator",
@@ -27,7 +27,7 @@ ROLE_TYPES = frozenset({
 })
 
 
-class decisionLogic:
+class FlowLogic:
     def __init__(self, session: Session, config: dict | None = None,
                  collaboration=None):
         self.session = session
@@ -36,11 +36,11 @@ class decisionLogic:
         self.workflow = CoreWorkflowAdapter(session)
         self.session.identity
         with self.session.lock:
-            self.session.application_metadata(decision_APPLICATION_ID)
+            self.session.application_metadata(FLOW_APPLICATION_ID)
 
     def application_registration(self) -> ApplicationRegistration:
         return ApplicationRegistration(
-            decision_APPLICATION_ID,
+            FLOW_APPLICATION_ID,
             frozenset({PROCESS_TYPE}),
             self.processes,
             self.accept_process_invitation,
@@ -132,7 +132,7 @@ class decisionLogic:
     def accept_process_invitation(self, subtree: ProtocolNode) -> SessionResult:
         if subtree.data.get("type") != PROCESS_TYPE:
             return SessionResult(
-                "error", reason="invited topic is not a S-decision process",
+                "error", reason="invited topic is not a S-Flow process",
             )
         result = self.session.accept_topic_invitation(
             subtree, self._container().uuid,
@@ -420,7 +420,7 @@ class decisionLogic:
         return {
             "uuid": process.uuid,
             "title": process.data.get("title") or "Untitled process",
-            "application_id": decision_APPLICATION_ID,
+            "application_id": FLOW_APPLICATION_ID,
             "definition_id": process.data.get("definition_id") or "",
             "definition_version": process.data.get("definition_version") or "",
             "lifecycle": process.data.get("lifecycle") or "setup",
@@ -494,8 +494,8 @@ class decisionLogic:
                 parent = self.session.protocol.index.get(current.parent_uuid)
                 return current if (
                     parent
-                    and parent.data.get("type") == "decision_app"
-                    and parent.data.get("name") == decision_APP_NAME
+                    and parent.data.get("type") == "flow_app"
+                    and parent.data.get("name") == FLOW_APP_NAME
                 ) else None
             current = self.session.protocol.index.get(current.parent_uuid)
         return None
@@ -503,19 +503,19 @@ class decisionLogic:
     def _metadata(self) -> dict:
         with self.session.lock:
             return copy.deepcopy(
-                self.session.application_metadata(decision_APPLICATION_ID),
+                self.session.application_metadata(FLOW_APPLICATION_ID),
             )
 
     def _remember_process(self, process_uuid: str) -> None:
         with self.session.lock:
             metadata = self.session.application_metadata(
-                decision_APPLICATION_ID,
+                FLOW_APPLICATION_ID,
             )
             metadata["selected_process_uuid"] = process_uuid
 
     def _container(self) -> ProtocolNode:
         return self._folder(
-            self._apps_folder(), decision_APP_NAME, "decision_app",
+            self._apps_folder(), FLOW_APP_NAME, "flow_app",
         )
 
     def _find_container(self) -> ProtocolNode | None:
@@ -532,8 +532,8 @@ class decisionLogic:
         return next(
             (
                 child for child in apps.live_children()
-                if child.data.get("type") == "decision_app"
-                and child.data.get("name") == decision_APP_NAME
+                if child.data.get("type") == "flow_app"
+                and child.data.get("name") == FLOW_APP_NAME
             ),
             None,
         )

@@ -13,7 +13,7 @@ except ImportError as exc:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE_DIR = PROJECT_ROOT / "src" / "s_decision" / "workflow" / "templates"
+TEMPLATE_DIR = PROJECT_ROOT / "src" / "s_flow" / "workflow" / "templates"
 XSD_PATH = PROJECT_ROOT / "schema" / "consent-workflow-profile.xsd"
 
 BPMN_NS = "http://www.omg.org/spec/BPMN/20100524/MODEL"

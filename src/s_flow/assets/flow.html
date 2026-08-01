@@ -3,15 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>S-decision</title>
+    <title>S-Flow</title>
     <link rel="stylesheet" href="/shared.css" />
-    <link rel="stylesheet" href="/apps/decision/styles.css" />
+    <link rel="stylesheet" href="/apps/flow/styles.css" />
   </head>
   <body>
     <header><div id="shell"></div></header>
     <main>
       <section class="panel">
-        <h1 id="title">S-decision</h1>
+        <h1 id="title">S-Flow</h1>
         <p id="position">Create or accept a process to begin.</p>
         <dl id="summary"></dl>
       </section>
@@ -37,7 +37,7 @@
       const api = SovereignApi.request;
 
       async function refresh() {
-        const payload = await api("/api/decision/process");
+        const payload = await api("/api/flow/process");
         const process = payload.process;
         SovereignShell.setTopicSelector({
           label: "Process",
@@ -47,13 +47,13 @@
           })),
           selectedUuid: process?.uuid,
           onSelect: async (processUuid) => {
-            await api("/api/decision/processes/select", {
+            await api("/api/flow/processes/select", {
               process_uuid: processUuid,
             });
             await refresh();
           },
           onRename: async (title) => {
-            await api("/api/decision/processes/rename", {
+            await api("/api/flow/processes/rename", {
               process_uuid: process.uuid,
               title,
               expected_content_hash: process.content_hash,
@@ -83,7 +83,7 @@
 
       document.getElementById("create").onsubmit = async (event) => {
         event.preventDefault();
-        await api("/api/decision/processes/create", {
+        await api("/api/flow/processes/create", {
           title: document.getElementById("newTitle").value,
           definition_id: document.getElementById("template").value,
           definition_version: "0.2.0",

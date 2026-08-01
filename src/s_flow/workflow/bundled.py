@@ -25,6 +25,6 @@ def load_bundled_workflow(template_id: str) -> WorkflowDefinition:
     filename = TEMPLATE_FILES.get(str(template_id or "").strip())
     if not filename:
         raise ValueError(f"Unknown bundled workflow template {template_id!r}.")
-    resource = files("s_decision.workflow").joinpath("templates", filename)
+    resource = files("s_flow.workflow").joinpath("templates", filename)
     with as_file(resource) as path:
         return load_workflow(path)

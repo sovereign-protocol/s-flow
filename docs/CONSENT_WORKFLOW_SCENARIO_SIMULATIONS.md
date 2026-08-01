@@ -224,4 +224,4 @@ simulations expose three required refinements:
    or objection task belongs in recent activity, not in `lastCompletedStage`.
 
 These refinements have been applied to Profile 0.2. Its canonical
-machine-readable serialization is part of S-decision's workflow package.
+machine-readable serialization is part of S-Flow's workflow package.

@@ -3,13 +3,13 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "s-decision"
+name = "sovereign-flow"
 version = "0.1.0a1"
-description = "Asynchronous consent-based decision processes for Sovereign Core"
+description = "Asynchronous workflow and consent processes for Sovereign Core"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-keywords = ["local-first", "consent", "decision-making", "sovereign-protocol"]
+keywords = ["local-first", "workflow", "consent", "decision-making", "sovereign-protocol"]
 dependencies = [
   "sovereign-protocol>=0.1.5,<0.2",
 ]
@@ -19,18 +19,18 @@ test = ["pytest>=8,<10"]
 desktop = ["pywebview>=5,<6"]
 
 [project.scripts]
-s-decision-desktop = "s_decision.desktop:main"
+s-flow-desktop = "s_flow.desktop:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["s_decision*"]
+include = ["s_flow*"]
 
 [tool.setuptools.package-data]
-"s_decision.assets" = ["*.css", "*.html", "*.js"]
-"s_decision.workflow" = ["templates/*.bpmn", "schemas/*.json"]
+"s_flow.assets" = ["*.css", "*.html", "*.js"]
+"s_flow.workflow" = ["templates/*.bpmn", "schemas/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

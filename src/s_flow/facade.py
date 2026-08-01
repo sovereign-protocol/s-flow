@@ -1,17 +1,17 @@
-"""Versioned public facade exposed by S-decision."""
+"""Versioned public facade exposed by S-Flow."""
 
 from __future__ import annotations
 
 from sovereign import ProtocolNode
 
-from .logic import decisionLogic
+from .logic import FlowLogic
 
 
-decision_FACADE_API_VERSION = 1
+FLOW_FACADE_API_VERSION = 1
 
 
-class decisionFacade:
-    def __init__(self, logic: decisionLogic):
+class FlowFacade:
+    def __init__(self, logic: FlowLogic):
         self._logic = logic
 
     def processes(self) -> list[ProtocolNode]:

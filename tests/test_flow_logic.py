@@ -2,27 +2,27 @@ import unittest
 
 from sovereign import ProtocolNode, Session
 
-from s_decision.application import APPLICATION_MANIFEST
-from s_decision.logic import (
+from s_flow.application import APPLICATION_MANIFEST
+from s_flow.logic import (
     ASSIGNMENT_TYPE,
-    decision_APPLICATION_ID,
+    FLOW_APPLICATION_ID,
     PROCESS_TYPE,
-    decisionLogic,
+    FlowLogic,
 )
-from s_decision.workflow_adapter import RESPONSE_TYPE, RUNTIME_STATE_TYPE
+from s_flow.workflow_adapter import RESPONSE_TYPE, RUNTIME_STATE_TYPE
 
 
-class decisionLogicTests(unittest.TestCase):
+class FlowLogicTests(unittest.TestCase):
     def setUp(self):
         self.session = Session("local")
-        self.logic = decisionLogic(self.session)
+        self.logic = FlowLogic(self.session)
 
     def test_manifest_and_topic_registration(self):
         registration = self.logic.application_registration()
 
-        self.assertEqual(APPLICATION_MANIFEST.display_name, "S-decision")
-        self.assertEqual(APPLICATION_MANIFEST.application_id, "decision")
-        self.assertEqual(registration.application_id, decision_APPLICATION_ID)
+        self.assertEqual(APPLICATION_MANIFEST.display_name, "S-Flow")
+        self.assertEqual(APPLICATION_MANIFEST.application_id, "flow")
+        self.assertEqual(registration.application_id, FLOW_APPLICATION_ID)
         self.assertEqual(registration.root_types, frozenset({PROCESS_TYPE}))
         self.assertTrue(registration.assignment_scoped)
         self.assertTrue(registration.mount_invitation)
@@ -77,7 +77,7 @@ class decisionLogicTests(unittest.TestCase):
 
     def test_invited_process_mounts_as_a_local_topic(self):
         host = Session("host")
-        host_logic = decisionLogic(host)
+        host_logic = FlowLogic(host)
         process_uuid = host_logic.create_process("Shared election").value
         subtree = ProtocolNode.from_dict(
             host.protocol.index[process_uuid].to_dict(),
@@ -129,7 +129,7 @@ class decisionLogicTests(unittest.TestCase):
             1,
         )
 
-        restored_logic = decisionLogic(self.session)
+        restored_logic = FlowLogic(self.session)
         restored = restored_logic.process_payload(process_uuid)["workflow"]
         self.assertEqual(restored["position"]["last_completed_stage"]["id"], "Task_Nominate")
         self.assertEqual(

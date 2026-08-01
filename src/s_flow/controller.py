@@ -1,4 +1,4 @@
-"""HTTP routes for S-decision."""
+"""HTTP routes for S-Flow."""
 
 from __future__ import annotations
 
@@ -122,32 +122,32 @@ def build_routes(logic, runtime) -> list[Route]:
         )
 
     return [
-        Route("/api/decision/process", api_process),
-        Route("/api/decision/processes/create", api_create, methods=["POST"]),
-        Route("/api/decision/processes/select", api_select, methods=["POST"]),
-        Route("/api/decision/processes/rename", api_rename, methods=["POST"]),
-        Route("/api/decision/processes/delete", api_delete, methods=["POST"]),
-        Route("/api/decision/assignments/set", api_assign, methods=["POST"]),
-        Route("/api/decision/processes/start", api_start, methods=["POST"]),
+        Route("/api/flow/process", api_process),
+        Route("/api/flow/processes/create", api_create, methods=["POST"]),
+        Route("/api/flow/processes/select", api_select, methods=["POST"]),
+        Route("/api/flow/processes/rename", api_rename, methods=["POST"]),
+        Route("/api/flow/processes/delete", api_delete, methods=["POST"]),
+        Route("/api/flow/assignments/set", api_assign, methods=["POST"]),
+        Route("/api/flow/processes/start", api_start, methods=["POST"]),
         Route(
-            "/api/decision/processes/configure_election",
+            "/api/flow/processes/configure_election",
             api_configure_election,
             methods=["POST"],
         ),
-        Route("/api/decision/tasks/submit", api_submit, methods=["POST"]),
+        Route("/api/flow/tasks/submit", api_submit, methods=["POST"]),
         Route(
-            "/api/decision/information/acknowledge",
+            "/api/flow/information/acknowledge",
             api_acknowledge,
             methods=["POST"],
         ),
-        Route("/api/decision/agenda/create", api_agenda_create, methods=["POST"]),
-        Route("/api/decision/agenda/delete", api_agenda_delete, methods=["POST"]),
+        Route("/api/flow/agenda/create", api_agenda_create, methods=["POST"]),
+        Route("/api/flow/agenda/delete", api_agenda_delete, methods=["POST"]),
         Route(
-            "/api/decision/agenda/set_priority",
+            "/api/flow/agenda/set_priority",
             api_agenda_priority,
             methods=["POST"],
         ),
-        Route("/api/decision/agenda/move", api_agenda_move, methods=["POST"]),
+        Route("/api/flow/agenda/move", api_agenda_move, methods=["POST"]),
     ]
 
 
