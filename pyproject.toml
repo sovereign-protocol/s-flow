@@ -12,7 +12,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "LICENSES/*", "NOTICE"]
 keywords = ["local-first", "workflow", "consent", "decision-making", "sovereign-protocol"]
 dependencies = [
-  "sovereign-protocol>=0.1.5,<0.2",
+  "sovereign-protocol>=0.1.7,<0.2",
 ]
 
 [project.optional-dependencies]
