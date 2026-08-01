@@ -26,10 +26,20 @@ what a first release would carry.
   definitions with `lxml` installed, because the validator soft-skips when it
   is absent and would otherwise report success without checking anything.
 
-### Known issue
-
-The web page does not render a process. Core's `shared.js` assigns
-`onclick` to `confirmModalCancelBtn` at top level, `flow.html` has no such
-element, and the script therefore dies before defining `SovereignShell` —
-which `refresh()` calls before its own empty-state guard. Every sibling
-application page carries that element. Fix this before publishing.
+- **Fixed: the page never rendered a process.** Core's `shared.js` assigned
+  `onclick` to `confirmModalCancelBtn` at the top level; this page has no
+  confirm modal, so the script died before defining `SovereignShell`, which
+  `refresh()` calls before its own empty-state guard. Fixed in Core 0.1.7,
+  which this release now requires.
+- **Mount the shared shell.** The page called `setTopicSelector` but never
+  `SovereignShell.mount(...)`, and that call returns silently when the header
+  does not exist — so the process picker, sharing state, profile and
+  collaboration pane were all absent rather than broken. Mounting happens
+  before the first refresh for the same reason. The shell's agenda pane is
+  wired to this application's `/api/flow/agenda/*` routes, keyed on
+  `process_uuid`.
+- **Refresh the shell on every load.** Header state — divergences, sharing,
+  agenda, sibling alarms — is derived from `state()` and recomputed only when
+  asked, so without a `SovereignShell.refresh()` call the Collaboration
+  control stayed disabled at "Select a topic first" no matter what was
+  selected.

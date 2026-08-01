@@ -36,8 +36,13 @@
     <script>
       const api = SovereignApi.request;
 
+      // The shell reads this rather than being handed a payload, so it always
+      // sees the most recent one without refresh() having to push to it.
+      let state = null;
+
       async function refresh() {
         const payload = await api("/api/flow/process");
+        state = payload;
         const process = payload.process;
         SovereignShell.setTopicSelector({
           label: "Process",
@@ -61,6 +66,10 @@
             await refresh();
           },
         });
+        // Header state - divergences, sharing, agenda, sibling alarms - is
+        // derived from state() and only recomputed when asked. Before the
+        // early return below, so it still updates when nothing is selected.
+        SovereignShell.refresh();
         if (!process) return;
         const data = process.data || {};
         document.getElementById("title").textContent = data.title || "Untitled process";
@@ -91,7 +100,30 @@
         document.getElementById("newTitle").value = "";
         await refresh();
       };
-      refresh();
+
+      // Mount before the first refresh, not after: setTopicSelector returns
+      // silently when the header does not exist yet, so a refresh that runs
+      // first would leave the process picker permanently empty.
+      (async () => {
+        await SovereignShell.mount({
+          container: document.getElementById("shell"),
+          applicationId: "flow",
+          topicUuid: () => state?.process?.uuid || "",
+          state: () => state || {},
+          // The agenda pane is the shell's; S-Flow supplies only where its
+          // routes are and what its topic is called. Omitting this hides the
+          // pane rather than breaking it.
+          agendaRoutes: {
+            topicKey: "process_uuid",
+            create: "/api/flow/agenda/create",
+            delete: "/api/flow/agenda/delete",
+            setPriority: "/api/flow/agenda/set_priority",
+            move: "/api/flow/agenda/move",
+          },
+          onChanged: () => refresh(),
+        });
+        await refresh();
+      })();
     </script>
   </body>
 </html>
