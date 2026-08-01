@@ -16,6 +16,11 @@ The current scaffold:
 - rejects stale task responses with the runtime node content hash; and
 - provides a versioned facade consumed by Personal Cockpit.
 
+The workflow interpreter, BPMN/CWP definitions and response schemas are part
+of this package under `src/s_decision/workflow`; they are not a separate
+application or dependency. See [the runtime documentation](docs/WORKFLOW_RUNTIME.md)
+and [serialization specification](docs/WORKFLOW_SERIALIZATION.md).
+
 Peer-authored response ingestion into a facilitator-owned runtime is the next
 distributed-execution slice.
 

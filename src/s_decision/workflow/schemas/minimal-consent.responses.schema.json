@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:s-protocol:consent-workflow:responses:minimal-consent:0.2",
+  "$defs": {
+    "proposal": {
+      "type": "object",
+      "properties": {
+        "proposal": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "proposal"
+      ],
+      "additionalProperties": false
+    },
+    "consentResponse": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "consent"
+            }
+          },
+          "required": [
+            "decision"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "objection"
+            },
+            "statement": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "decision",
+            "statement"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "discussionMessage": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "revisionDecision": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "amend"
+            },
+            "proposal": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "decision",
+            "proposal"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "withdraw"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "decision"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

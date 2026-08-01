@@ -12,7 +12,6 @@ license = "Apache-2.0"
 keywords = ["local-first", "consent", "decision-making", "sovereign-protocol"]
 dependencies = [
   "sovereign-protocol>=0.1.5,<0.2",
-  "consent-workflow-profile>=0.2.0a1,<0.3",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +30,7 @@ include = ["s_decision*"]
 
 [tool.setuptools.package-data]
 "s_decision.assets" = ["*.css", "*.html", "*.js"]
+"s_decision.workflow" = ["templates/*.bpmn", "schemas/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

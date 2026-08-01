@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cwp_runtime import (
+from .workflow import (
     WorkflowEngine,
     WorkflowError,
     instance_from_dict,

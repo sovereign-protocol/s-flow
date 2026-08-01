@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:s-protocol:consent-workflow:responses:integrative-election:0.2",
+  "$defs": {
+    "acknowledgement": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "const": "complete"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "initialNomination": {
+      "type": "object",
+      "properties": {
+        "candidateId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "candidateId"
+      ],
+      "additionalProperties": false
+    },
+    "sharing": {
+      "type": "object",
+      "properties": {
+        "statement": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "statement"
+      ],
+      "additionalProperties": false
+    },
+    "nominationChange": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "keep"
+            }
+          },
+          "required": [
+            "decision"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "change"
+            },
+            "candidateId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "decision",
+            "candidateId",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "tieDecision": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "repeat"
+            }
+          },
+          "required": [
+            "decision"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "select"
+            },
+            "candidateId": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "decision",
+            "candidateId"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "objection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "noObjection"
+            }
+          },
+          "required": [
+            "decision"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "objection"
+            },
+            "statement": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "decision",
+            "statement"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "facilitatorValidity": {
+      "type": "object",
+      "properties": {
+        "objectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "enum": [
+            "valid",
+            "invalid"
+          ]
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "objectionId",
+        "decision"
+      ],
+      "additionalProperties": false
+    },
+    "discussionMessage": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "openEligibilityDecision": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "continue"
+            }
+          },
+          "required": [
+            "decision"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "void"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "decision",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

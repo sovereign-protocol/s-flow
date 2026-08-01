@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:cwp="urn:s-protocol:consent-workflow:0.2"
+    id="Definitions_IntegrativeElection"
+    targetNamespace="urn:s-protocol:consent-workflow:templates">
+
+  <bpmn:process id="Process_IntegrativeElection" name="Integrative Election" isExecutable="true">
+    <bpmn:extensionElements>
+      <cwp:profile
+          version="0.2"
+          templateId="integrativeElection"
+          templateVersion="0.2.0"
+          asynchronous="true"
+          trustedSpace="true">
+        <cwp:role id="facilitator" kind="facilitator" min="1" max="1"/>
+        <cwp:role id="requiredParticipant" kind="requiredParticipant" min="1" max="unbounded"/>
+        <cwp:role id="observer" kind="observer" min="0" max="unbounded"/>
+        <cwp:outcome code="elected"/>
+        <cwp:outcome code="void"/>
+      </cwp:profile>
+      <cwp:candidateEligibility mode="instanceConfiguration" facilitatorMayDeclareVoid="true"/>
+    </bpmn:extensionElements>
+
+    <bpmn:startEvent id="Start_Election" name="Election started"/>
+
+    <bpmn:exclusiveGateway id="Gateway_RolePresentation" name="Present role?"/>
+
+    <bpmn:userTask id="Task_PresentRole" name="Present role">
+      <bpmn:extensionElements>
+        <cwp:assignment role="facilitator"/>
+        <cwp:input
+            role="facilitator"
+            responseSchema="../schemas/integrative-election.responses.schema.json#/$defs/acknowledgement"
+            completionRule="validResponse"/>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+
+    <bpmn:userTask id="Task_Nominate" name="Nominate candidate">
+      <bpmn:extensionElements>
+        <cwp:assignment role="requiredParticipant"/>
+        <cwp:humanRound
+            audience="requiredParticipant"
+            participation="all"
+            ordering="parallel"
+            publication="onRoundComplete"
+            responseSchema="../schemas/integrative-election.responses.schema.json#/$defs/initialNomination"
+            completionRule="allResponses"
+            participantSnapshot="true"/>
+      </bpmn:extensionElements>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="false">
+        <bpmn:completionCondition
+            xsi:type="bpmn:tFormalExpression"
+            language="urn:s-protocol:consent-workflow:predicate">allResponses</bpmn:completionCondition>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:userTask>
+
+    <bpmn:userTask id="Task_ShareReasons" name="Share nomination reasons">
+      <bpmn:extensionElements>
+        <cwp:assignment role="requiredParticipant"/>
+        <cwp:humanRound
+            audience="requiredParticipant"
+            participation="all"
+            ordering="sequential"
+            publication="immediate"
+            responseSchema="../schemas/integrative-election.responses.schema.json#/$defs/sharing"
+            completionRule="allResponses"
+            participantSnapshot="true"/>
+      </bpmn:extensionElements>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+        <bpmn:completionCondition
+            xsi:type="bpmn:tFormalExpression"
+            language="urn:s-protocol:consent-workflow:predicate">allResponses</bpmn:completionCondition>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:userTask>
+
+    <bpmn:userTask id="Task_ChangeNominations" name="Keep or change nomination">
+      <bpmn:extensionElements>
+        <cwp:assignment role="requiredParticipant"/>
+        <cwp:humanRound
+            audience="requiredParticipant"
+            participation="all"
+            ordering="sequential"
+            publication="immediate"
+            responseSchema="../schemas/integrative-election.responses.schema.json#/$defs/nominationChange"
+            completionRule="allResponses"
+            participantSnapshot="true"/>
+      </bpmn:extensionElements>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+        <bpmn:completionCondition
+            xsi:type="bpmn:tFormalExpression"
+            language="urn:s-protocol:consent-workflow:predicate">allResponses</bpmn:completionCondition>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:userTask>
+
+    <bpmn:serviceTask id="Task_CalculateRanking" name="Calculate ranking">
+      <bpmn:extensionElements>
+        <cwp:calculation operation="pluralityRanking" version="1"/>
+        <cwp:calculation operation="topTie" version="1"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:exclusiveGateway id="Gateway_TopResult" name="Unique top candidate?"/>
+
+    <bpmn:userTask id="Task_ResolveTie" name="Resolve tie">
+      <bpmn:extensionElements>
+        <cwp:assignment role="facilitator"/>
+        <cwp:input
+            role="facilitator"
+            responseSchema="../schemas/integrative-election.responses.schema.json#/$defs/tieDecision"
+            completionRule="validTieDecision"/>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="Gateway_TieDecision" name="Tie decision"/>
+
+    <bpmn:serviceTask id="Task_ProposeCandidate" name="Propose candidate">
+      <bpmn:extensionElements>
+        <cwp:calculation operation="selectProposedCandidate" version="1"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:userTask id="Task_ObjectionRound" name="Objection round">
+      <bpmn:extensionElements>
+        <cwp:assignment role="requiredParticipant"/>
+        <cwp:humanRound
+            audience="requiredParticipant"
+            participation="all"
+            ordering="sequential"
+            publication="immediate"
+            responseSchema="../schemas/integrative-election.responses.schema.json#/$defs/objection"
+            completionRule="allResponses"
+            participantSnapshot="true"/>
+      </bpmn:extensionElements>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+        <bpmn:completionCondition
+            xsi:type="bpmn:tFormalExpression"
+            language="urn:s-protocol:consent-workflow:predicate">allResponses</bpmn:completionCondition>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:userTask>
+
+    <bpmn:subProcess id="Sub_ResolveObjections" name="Discuss and validate objections">
+      <bpmn:extensionElements>
+        <cwp:dynamicWorkCollection
+            itemType="objection"
+            closureRule="allItemsResolved"/>
+        <cwp:managedQueue
+            itemType="objection"
+            ordering="facilitator"
+            controllerRole="facilitator"
+            completionRule="allItemsResolved"/>
+      </bpmn:extensionElements>
+
+      <bpmn:startEvent id="Start_ResolveObjections"/>
+
+      <bpmn:userTask id="Task_DiscussObjection" name="Discuss objection">
+        <bpmn:extensionElements>
+          <cwp:controlledInteraction
+              kind="discussion"
+              creators="requiredParticipant facilitator"
+              responders="requiredParticipant facilitator"
+              replyPolicy="permittedContributors"
+              explicitDone="false"
+              closer="facilitator"
+              closureRule="facilitatorCloses"
+              responseSchema="../schemas/integrative-election.responses.schema.json#/$defs/discussionMessage"/>
+        </bpmn:extensionElements>
+      </bpmn:userTask>
+
+      <bpmn:userTask id="Task_RecordValidity" name="Record objection validity">
+        <bpmn:extensionElements>
+          <cwp:assignment role="facilitator"/>
+          <cwp:input
+              role="facilitator"
+              responseSchema="../schemas/integrative-election.responses.schema.json#/$defs/facilitatorValidity"
+              completionRule="validResponse"/>
+        </bpmn:extensionElements>
+      </bpmn:userTask>
+
+      <bpmn:endEvent id="End_ResolveObjections"/>
+      <bpmn:sequenceFlow id="Flow_E_Sub1" sourceRef="Start_ResolveObjections" targetRef="Task_DiscussObjection"/>
+      <bpmn:sequenceFlow id="Flow_E_Sub2" sourceRef="Task_DiscussObjection" targetRef="Task_RecordValidity"/>
+      <bpmn:sequenceFlow id="Flow_E_Sub3" sourceRef="Task_RecordValidity" targetRef="End_ResolveObjections"/>
+    </bpmn:subProcess>
+
+    <bpmn:exclusiveGateway id="Gateway_ObjectionResult" name="Valid objection?"/>
+
+    <bpmn:serviceTask id="Task_FinalizeElection" name="Finalize election">
+      <bpmn:extensionElements>
+        <cwp:calculation operation="finalizeElection" version="1"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_ExcludeCandidate" name="Exclude candidate">
+      <bpmn:extensionElements>
+        <cwp:calculation operation="excludeCurrentCandidate" version="1"/>
+        <cwp:calculation operation="availableCandidates" version="1"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:exclusiveGateway id="Gateway_CandidateAvailability" name="Candidate availability"/>
+
+    <bpmn:userTask id="Task_OpenEligibilityDecision" name="Continue or declare void">
+      <bpmn:extensionElements>
+        <cwp:assignment role="facilitator"/>
+        <cwp:input
+            role="facilitator"
+            responseSchema="../schemas/integrative-election.responses.schema.json#/$defs/openEligibilityDecision"
+            completionRule="validResponse"/>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="Gateway_OpenEligibilityDecision" name="Open eligibility decision"/>
+
+    <bpmn:serviceTask id="Task_FinalizeVoid" name="Finalize void election">
+      <bpmn:extensionElements>
+        <cwp:calculation operation="finalizeVoidElection" version="1"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="End_Elected" name="Elected"/>
+    <bpmn:endEvent id="End_Void" name="Void"/>
+
+    <bpmn:sequenceFlow id="Flow_E1" sourceRef="Start_Election" targetRef="Gateway_RolePresentation"/>
+    <bpmn:sequenceFlow id="Flow_E2" sourceRef="Gateway_RolePresentation" targetRef="Task_PresentRole">
+      <bpmn:extensionElements><cwp:guard predicate="rolePresentationRequired"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E3" sourceRef="Gateway_RolePresentation" targetRef="Task_Nominate">
+      <bpmn:extensionElements><cwp:guard predicate="rolePresentationNotRequired"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E4" sourceRef="Task_PresentRole" targetRef="Task_Nominate"/>
+    <bpmn:sequenceFlow id="Flow_E5" sourceRef="Task_Nominate" targetRef="Task_ShareReasons"/>
+    <bpmn:sequenceFlow id="Flow_E6" sourceRef="Task_ShareReasons" targetRef="Task_ChangeNominations"/>
+    <bpmn:sequenceFlow id="Flow_E7" sourceRef="Task_ChangeNominations" targetRef="Task_CalculateRanking"/>
+    <bpmn:sequenceFlow id="Flow_E8" sourceRef="Task_CalculateRanking" targetRef="Gateway_TopResult"/>
+    <bpmn:sequenceFlow id="Flow_E9" sourceRef="Gateway_TopResult" targetRef="Task_ProposeCandidate">
+      <bpmn:extensionElements><cwp:guard predicate="uniqueTopCandidate"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E10" sourceRef="Gateway_TopResult" targetRef="Task_ResolveTie">
+      <bpmn:extensionElements><cwp:guard predicate="topTie"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E11" sourceRef="Task_ResolveTie" targetRef="Gateway_TieDecision"/>
+    <bpmn:sequenceFlow id="Flow_E12" sourceRef="Gateway_TieDecision" targetRef="Task_ProposeCandidate">
+      <bpmn:extensionElements><cwp:guard predicate="decisionSelectTiedCandidate"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E13" sourceRef="Gateway_TieDecision" targetRef="Task_ChangeNominations">
+      <bpmn:extensionElements><cwp:guard predicate="decisionRepeatRound"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E14" sourceRef="Task_ProposeCandidate" targetRef="Task_ObjectionRound"/>
+    <bpmn:sequenceFlow id="Flow_E15" sourceRef="Task_ObjectionRound" targetRef="Sub_ResolveObjections"/>
+    <bpmn:sequenceFlow id="Flow_E16" sourceRef="Sub_ResolveObjections" targetRef="Gateway_ObjectionResult"/>
+    <bpmn:sequenceFlow id="Flow_E17" sourceRef="Gateway_ObjectionResult" targetRef="Task_FinalizeElection">
+      <bpmn:extensionElements><cwp:guard predicate="noValidObjection"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E18" sourceRef="Gateway_ObjectionResult" targetRef="Task_ExcludeCandidate">
+      <bpmn:extensionElements><cwp:guard predicate="anyValidObjection"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E19" sourceRef="Task_FinalizeElection" targetRef="End_Elected"/>
+    <bpmn:sequenceFlow id="Flow_E20" sourceRef="Task_ExcludeCandidate" targetRef="Gateway_CandidateAvailability"/>
+    <bpmn:sequenceFlow id="Flow_E21" sourceRef="Gateway_CandidateAvailability" targetRef="Task_FinalizeVoid">
+      <bpmn:extensionElements><cwp:guard predicate="closedEligibilityNoCandidates"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E22" sourceRef="Gateway_CandidateAvailability" targetRef="Task_ChangeNominations">
+      <bpmn:extensionElements><cwp:guard predicate="closedEligibilityCandidatesAvailable"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E23" sourceRef="Gateway_CandidateAvailability" targetRef="Task_OpenEligibilityDecision">
+      <bpmn:extensionElements><cwp:guard predicate="openEligibility"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E24" sourceRef="Task_OpenEligibilityDecision" targetRef="Gateway_OpenEligibilityDecision"/>
+    <bpmn:sequenceFlow id="Flow_E25" sourceRef="Gateway_OpenEligibilityDecision" targetRef="Task_ChangeNominations">
+      <bpmn:extensionElements><cwp:guard predicate="decisionContinue"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E26" sourceRef="Gateway_OpenEligibilityDecision" targetRef="Task_FinalizeVoid">
+      <bpmn:extensionElements><cwp:guard predicate="decisionVoid"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E27" sourceRef="Task_FinalizeVoid" targetRef="End_Void"/>
+  </bpmn:process>
+</bpmn:definitions>

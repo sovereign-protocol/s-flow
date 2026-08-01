@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:cwp="urn:s-protocol:consent-workflow:0.2"
+    targetNamespace="urn:s-protocol:consent-workflow:0.2"
+    elementFormDefault="qualified"
+    attributeFormDefault="unqualified">
+
+  <xs:simpleType name="roleKind">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="facilitator"/>
+      <xs:enumeration value="proposer"/>
+      <xs:enumeration value="requiredParticipant"/>
+      <xs:enumeration value="optionalParticipant"/>
+      <xs:enumeration value="observer"/>
+      <xs:enumeration value="dynamicItemActor"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="participationMode">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="all"/>
+      <xs:enumeration value="optional"/>
+      <xs:enumeration value="threshold"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="orderingMode">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="parallel"/>
+      <xs:enumeration value="sequential"/>
+      <xs:enumeration value="facilitator"/>
+      <xs:enumeration value="submission"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="publicationMode">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="immediate"/>
+      <xs:enumeration value="onRoundComplete"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="interactionKind">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="questionAnswer"/>
+      <xs:enumeration value="statementRound"/>
+      <xs:enumeration value="discussion"/>
+      <xs:enumeration value="restrictedTest"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="replyPolicy">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="none"/>
+      <xs:enumeration value="designatedRespondersOnly"/>
+      <xs:enumeration value="permittedContributors"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="artifactAction">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="createInitialRevision"/>
+      <xs:enumeration value="createRevision"/>
+      <xs:enumeration value="adopt"/>
+      <xs:enumeration value="withdraw"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="roleType">
+    <xs:attribute name="id" type="xs:NCName" use="required"/>
+    <xs:attribute name="kind" type="cwp:roleKind" use="required"/>
+    <xs:attribute name="min" type="xs:nonNegativeInteger" use="required"/>
+    <xs:attribute name="max" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="artifactDefinitionType">
+    <xs:attribute name="id" type="xs:NCName" use="required"/>
+    <xs:attribute name="contentType" type="xs:string" use="required"/>
+    <xs:attribute name="lifecycle" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="outcomeType">
+    <xs:attribute name="code" type="xs:NCName" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="globalActionType">
+    <xs:attribute name="actorRole" type="xs:NCName" use="required"/>
+    <xs:attribute name="action" type="cwp:artifactAction" use="required"/>
+    <xs:attribute name="artifactRef" type="xs:NCName" use="required"/>
+    <xs:attribute name="allowedStates" type="xs:string" use="required"/>
+    <xs:attribute name="outcome" type="xs:NCName" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="profileType">
+    <xs:sequence>
+      <xs:element name="role" type="cwp:roleType" minOccurs="1" maxOccurs="unbounded"/>
+      <xs:element name="artifactDefinition" type="cwp:artifactDefinitionType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="outcome" type="cwp:outcomeType" minOccurs="1" maxOccurs="unbounded"/>
+      <xs:element name="globalAction" type="cwp:globalActionType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="version" type="xs:string" use="required"/>
+    <xs:attribute name="templateId" type="xs:NCName" use="required"/>
+    <xs:attribute name="templateVersion" type="xs:string" use="required"/>
+    <xs:attribute name="asynchronous" type="xs:boolean" use="required"/>
+    <xs:attribute name="trustedSpace" type="xs:boolean" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="assignmentType">
+    <xs:attribute name="role" type="xs:NCName" use="required"/>
+    <xs:attribute name="excludeRole" type="xs:NCName"/>
+  </xs:complexType>
+
+  <xs:complexType name="inputType">
+    <xs:attribute name="role" type="xs:NCName" use="required"/>
+    <xs:attribute name="responseSchema" type="xs:anyURI" use="required"/>
+    <xs:attribute name="completionRule" type="xs:NCName" use="required"/>
+    <xs:attribute name="revisionRef" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="humanRoundType">
+    <xs:attribute name="audience" type="xs:NCName" use="required"/>
+    <xs:attribute name="excludeRole" type="xs:NCName"/>
+    <xs:attribute name="participation" type="cwp:participationMode" use="required"/>
+    <xs:attribute name="ordering" type="cwp:orderingMode" use="required"/>
+    <xs:attribute name="publication" type="cwp:publicationMode" use="required"/>
+    <xs:attribute name="responseSchema" type="xs:anyURI" use="required"/>
+    <xs:attribute name="completionRule" type="xs:NCName" use="required"/>
+    <xs:attribute name="explicitPass" type="xs:boolean" default="false"/>
+    <xs:attribute name="participantSnapshot" type="xs:boolean" default="true"/>
+  </xs:complexType>
+
+  <xs:complexType name="controlledInteractionType">
+    <xs:attribute name="kind" type="cwp:interactionKind" use="required"/>
+    <xs:attribute name="creators" type="xs:string" use="required"/>
+    <xs:attribute name="excludeCreators" type="xs:string"/>
+    <xs:attribute name="responders" type="xs:string"/>
+    <xs:attribute name="replyPolicy" type="cwp:replyPolicy" use="required"/>
+    <xs:attribute name="explicitDone" type="xs:boolean" default="false"/>
+    <xs:attribute name="closer" type="xs:NCName"/>
+    <xs:attribute name="closureRule" type="xs:NCName" use="required"/>
+    <xs:attribute name="responseSchema" type="xs:anyURI" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="dynamicWorkCollectionType">
+    <xs:attribute name="itemType" type="xs:NCName" use="required"/>
+    <xs:attribute name="sourceRevision" type="xs:string"/>
+    <xs:attribute name="applicabilityRevision" type="xs:string"/>
+    <xs:attribute name="closureRule" type="xs:NCName" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="managedQueueType">
+    <xs:attribute name="itemType" type="xs:NCName" use="required"/>
+    <xs:attribute name="ordering" type="cwp:orderingMode" use="required"/>
+    <xs:attribute name="controllerRole" type="xs:NCName" use="required"/>
+    <xs:attribute name="completionRule" type="xs:NCName" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="requiredConfirmationType">
+    <xs:attribute name="role" type="xs:NCName" use="required"/>
+    <xs:attribute name="claim" type="xs:NCName" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="confirmationGateType">
+    <xs:sequence>
+      <xs:element name="requiredConfirmation" type="cwp:requiredConfirmationType" minOccurs="1" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="revisionRef" type="xs:string" use="required"/>
+    <xs:attribute name="completionRule" type="xs:NCName" use="required"/>
+    <xs:attribute name="responseSchema" type="xs:anyURI" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="calculationType">
+    <xs:attribute name="operation" type="xs:NCName" use="required"/>
+    <xs:attribute name="version" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="guardType">
+    <xs:attribute name="predicate" type="xs:NCName" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="artifactActionType">
+    <xs:attribute name="artifactRef" type="xs:NCName" use="required"/>
+    <xs:attribute name="action" type="cwp:artifactAction" use="required"/>
+    <xs:attribute name="when" type="xs:NCName"/>
+  </xs:complexType>
+
+  <xs:complexType name="candidateEligibilityType">
+    <xs:attribute name="mode" type="xs:NCName" use="required"/>
+    <xs:attribute name="facilitatorMayDeclareVoid" type="xs:boolean" use="required"/>
+  </xs:complexType>
+
+  <xs:element name="profile" type="cwp:profileType"/>
+  <xs:element name="assignment" type="cwp:assignmentType"/>
+  <xs:element name="input" type="cwp:inputType"/>
+  <xs:element name="humanRound" type="cwp:humanRoundType"/>
+  <xs:element name="controlledInteraction" type="cwp:controlledInteractionType"/>
+  <xs:element name="dynamicWorkCollection" type="cwp:dynamicWorkCollectionType"/>
+  <xs:element name="managedQueue" type="cwp:managedQueueType"/>
+  <xs:element name="confirmationGate" type="cwp:confirmationGateType"/>
+  <xs:element name="calculation" type="cwp:calculationType"/>
+  <xs:element name="guard" type="cwp:guardType"/>
+  <xs:element name="artifactAction" type="cwp:artifactActionType"/>
+  <xs:element name="candidateEligibility" type="cwp:candidateEligibilityType"/>
+</xs:schema>

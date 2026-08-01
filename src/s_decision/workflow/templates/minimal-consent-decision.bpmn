@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:cwp="urn:s-protocol:consent-workflow:0.2"
+    id="Definitions_MinimalConsent"
+    targetNamespace="urn:s-protocol:consent-workflow:templates">
+
+  <bpmn:process id="Process_MinimalConsent" name="Minimal Consent Decision" isExecutable="true">
+    <bpmn:extensionElements>
+      <cwp:profile
+          version="0.2"
+          templateId="minimalConsent"
+          templateVersion="0.2.0"
+          asynchronous="true"
+          trustedSpace="true">
+        <cwp:role id="proposer" kind="proposer" min="1" max="1"/>
+        <cwp:role id="requiredParticipant" kind="requiredParticipant" min="1" max="unbounded"/>
+        <cwp:role id="observer" kind="observer" min="0" max="unbounded"/>
+        <cwp:artifactDefinition
+            id="proposal"
+            contentType="text/markdown"
+            lifecycle="draft proposed underReview adopted withdrawn"/>
+        <cwp:outcome code="adopted"/>
+        <cwp:outcome code="withdrawn"/>
+      </cwp:profile>
+    </bpmn:extensionElements>
+
+    <bpmn:startEvent id="Start_MinimalConsent" name="Decision started"/>
+
+    <bpmn:userTask id="Task_CreateProposal" name="Create proposal">
+      <bpmn:extensionElements>
+        <cwp:assignment role="proposer"/>
+        <cwp:input
+            role="proposer"
+            responseSchema="../schemas/minimal-consent.responses.schema.json#/$defs/proposal"
+            completionRule="validResponse"/>
+        <cwp:artifactAction artifactRef="proposal" action="createInitialRevision"/>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+
+    <bpmn:userTask id="Task_ConsentRound" name="Consent round">
+      <bpmn:extensionElements>
+        <cwp:assignment role="requiredParticipant"/>
+        <cwp:humanRound
+            audience="requiredParticipant"
+            participation="all"
+            ordering="parallel"
+            publication="onRoundComplete"
+            responseSchema="../schemas/minimal-consent.responses.schema.json#/$defs/consentResponse"
+            completionRule="allResponses"
+            participantSnapshot="true"/>
+      </bpmn:extensionElements>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="false">
+        <bpmn:completionCondition
+            xsi:type="bpmn:tFormalExpression"
+            language="urn:s-protocol:consent-workflow:predicate">allResponses</bpmn:completionCondition>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="Gateway_ConsentResult" name="Consent result"/>
+
+    <bpmn:serviceTask id="Task_AdoptProposal" name="Adopt proposal">
+      <bpmn:extensionElements>
+        <cwp:artifactAction artifactRef="proposal" action="adopt"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:userTask id="Task_RevisionDecision" name="Amend or withdraw">
+      <bpmn:extensionElements>
+        <cwp:assignment role="proposer"/>
+        <cwp:input
+            role="proposer"
+            responseSchema="../schemas/minimal-consent.responses.schema.json#/$defs/revisionDecision"
+            completionRule="validResponse"
+            revisionRef="proposal.currentRevisionId"/>
+        <cwp:controlledInteraction
+            kind="discussion"
+            creators="requiredParticipant"
+            responders="requiredParticipant"
+            replyPolicy="permittedContributors"
+            explicitDone="false"
+            closer="proposer"
+            closureRule="proposerDecision"
+            responseSchema="../schemas/minimal-consent.responses.schema.json#/$defs/discussionMessage"/>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="Gateway_RevisionDecision" name="Revision decision"/>
+
+    <bpmn:serviceTask id="Task_CreateRevision" name="Create proposal revision">
+      <bpmn:extensionElements>
+        <cwp:artifactAction artifactRef="proposal" action="createRevision"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_WithdrawProposal" name="Withdraw proposal">
+      <bpmn:extensionElements>
+        <cwp:artifactAction artifactRef="proposal" action="withdraw"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="End_Adopted" name="Adopted"/>
+    <bpmn:endEvent id="End_Withdrawn" name="Withdrawn"/>
+
+    <bpmn:sequenceFlow id="Flow_M1" sourceRef="Start_MinimalConsent" targetRef="Task_CreateProposal"/>
+    <bpmn:sequenceFlow id="Flow_M2" sourceRef="Task_CreateProposal" targetRef="Task_ConsentRound"/>
+    <bpmn:sequenceFlow id="Flow_M3" sourceRef="Task_ConsentRound" targetRef="Gateway_ConsentResult"/>
+    <bpmn:sequenceFlow id="Flow_M4" sourceRef="Gateway_ConsentResult" targetRef="Task_AdoptProposal">
+      <bpmn:extensionElements>
+        <cwp:guard predicate="allConsent"/>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_M5" sourceRef="Gateway_ConsentResult" targetRef="Task_RevisionDecision">
+      <bpmn:extensionElements>
+        <cwp:guard predicate="anyObjection"/>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_M6" sourceRef="Task_AdoptProposal" targetRef="End_Adopted"/>
+    <bpmn:sequenceFlow id="Flow_M7" sourceRef="Task_RevisionDecision" targetRef="Gateway_RevisionDecision"/>
+    <bpmn:sequenceFlow id="Flow_M8" sourceRef="Gateway_RevisionDecision" targetRef="Task_CreateRevision">
+      <bpmn:extensionElements>
+        <cwp:guard predicate="decisionAmend"/>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_M9" sourceRef="Task_CreateRevision" targetRef="Task_ConsentRound"/>
+    <bpmn:sequenceFlow id="Flow_M10" sourceRef="Gateway_RevisionDecision" targetRef="Task_WithdrawProposal">
+      <bpmn:extensionElements>
+        <cwp:guard predicate="decisionWithdraw"/>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_M11" sourceRef="Task_WithdrawProposal" targetRef="End_Withdrawn"/>
+  </bpmn:process>
+</bpmn:definitions>

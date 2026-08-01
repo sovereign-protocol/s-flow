@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:cwp="urn:s-protocol:consent-workflow:0.2"
+    id="Definitions_IDMP"
+    targetNamespace="urn:s-protocol:consent-workflow:templates">
+
+  <bpmn:process id="Process_IDMP" name="Integrative Decision-Making Process" isExecutable="true">
+    <bpmn:extensionElements>
+      <cwp:profile
+          version="0.2"
+          templateId="integrativeDecisionMaking"
+          templateVersion="0.2.0"
+          asynchronous="true"
+          trustedSpace="true">
+        <cwp:role id="facilitator" kind="facilitator" min="1" max="1"/>
+        <cwp:role id="proposer" kind="proposer" min="1" max="1"/>
+        <cwp:role id="requiredParticipant" kind="requiredParticipant" min="1" max="unbounded"/>
+        <cwp:role id="objector" kind="dynamicItemActor" min="0" max="1"/>
+        <cwp:role id="observer" kind="observer" min="0" max="unbounded"/>
+        <cwp:artifactDefinition
+            id="proposal"
+            contentType="text/markdown"
+            lifecycle="draft proposed underReview adopted withdrawn"/>
+        <cwp:outcome code="adopted"/>
+        <cwp:outcome code="withdrawn"/>
+        <cwp:globalAction
+            actorRole="proposer"
+            action="withdraw"
+            artifactRef="proposal"
+            allowedStates="proposed underReview"
+            outcome="withdrawn"/>
+      </cwp:profile>
+    </bpmn:extensionElements>
+
+    <bpmn:startEvent id="Start_IDMP" name="Tension ready"/>
+
+    <bpmn:userTask id="Task_PresentProposal" name="Present proposal">
+      <bpmn:extensionElements>
+        <cwp:assignment role="proposer"/>
+        <cwp:input
+            role="proposer"
+            responseSchema="../schemas/integrative-decision-making.responses.schema.json#/$defs/proposal"
+            completionRule="validResponse"/>
+        <cwp:artifactAction artifactRef="proposal" action="createInitialRevision"/>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+
+    <bpmn:userTask id="Task_ClarifyingQuestions" name="Clarifying questions">
+      <bpmn:extensionElements>
+        <cwp:controlledInteraction
+            kind="questionAnswer"
+            creators="requiredParticipant"
+            excludeCreators="proposer"
+            responders="proposer"
+            replyPolicy="designatedRespondersOnly"
+            explicitDone="true"
+            closer="facilitator"
+            closureRule="allCreatorsDoneAndItemsResolved"
+            responseSchema="../schemas/integrative-decision-making.responses.schema.json#/$defs/questionExchange"/>
+        <cwp:dynamicWorkCollection
+            itemType="clarifyingQuestion"
+            sourceRevision="proposal.currentRevisionId"
+            applicabilityRevision="proposal.currentRevisionId"
+            closureRule="allItemsResolved"/>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+
+    <bpmn:userTask id="Task_ReactionRound" name="Reaction round">
+      <bpmn:extensionElements>
+        <cwp:assignment role="requiredParticipant" excludeRole="proposer"/>
+        <cwp:humanRound
+            audience="requiredParticipant"
+            excludeRole="proposer"
+            participation="all"
+            ordering="sequential"
+            publication="immediate"
+            responseSchema="../schemas/integrative-decision-making.responses.schema.json#/$defs/reaction"
+            completionRule="allResponses"
+            explicitPass="true"
+            participantSnapshot="true"/>
+        <cwp:controlledInteraction
+            kind="statementRound"
+            creators="requiredParticipant"
+            excludeCreators="proposer"
+            replyPolicy="none"
+            explicitDone="true"
+            closureRule="allResponses"
+            responseSchema="../schemas/integrative-decision-making.responses.schema.json#/$defs/reaction"/>
+      </bpmn:extensionElements>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+        <bpmn:completionCondition
+            xsi:type="bpmn:tFormalExpression"
+            language="urn:s-protocol:consent-workflow:predicate">allResponses</bpmn:completionCondition>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:userTask>
+
+    <bpmn:userTask id="Task_OptionToClarify" name="Option to clarify">
+      <bpmn:extensionElements>
+        <cwp:assignment role="proposer"/>
+        <cwp:input
+            role="proposer"
+            responseSchema="../schemas/integrative-decision-making.responses.schema.json#/$defs/optionToClarify"
+            completionRule="validResponse"
+            revisionRef="proposal.currentRevisionId"/>
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="Gateway_ProposerDecision" name="Proposer decision"/>
+
+    <bpmn:serviceTask id="Task_CreateClarifiedRevision" name="Create amended proposal revision">
+      <bpmn:extensionElements>
+        <cwp:artifactAction artifactRef="proposal" action="createRevision"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_WithdrawIDMPProposal" name="Withdraw proposal">
+      <bpmn:extensionElements>
+        <cwp:artifactAction artifactRef="proposal" action="withdraw"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:userTask id="Task_IDMPObjectionRound" name="Objection round">
+      <bpmn:extensionElements>
+        <cwp:assignment role="requiredParticipant"/>
+        <cwp:humanRound
+            audience="requiredParticipant"
+            participation="all"
+            ordering="sequential"
+            publication="immediate"
+            responseSchema="../schemas/integrative-decision-making.responses.schema.json#/$defs/objection"
+            completionRule="allResponses"
+            participantSnapshot="true"/>
+      </bpmn:extensionElements>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+        <bpmn:completionCondition
+            xsi:type="bpmn:tFormalExpression"
+            language="urn:s-protocol:consent-workflow:predicate">allResponses</bpmn:completionCondition>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:userTask>
+
+    <bpmn:subProcess id="Sub_TestObjections" name="Test potential objections">
+      <bpmn:extensionElements>
+        <cwp:dynamicWorkCollection
+            itemType="potentialObjection"
+            sourceRevision="proposal.currentRevisionId"
+            applicabilityRevision="proposal.currentRevisionId"
+            closureRule="allItemsResolved"/>
+        <cwp:managedQueue
+            itemType="potentialObjection"
+            ordering="facilitator"
+            controllerRole="facilitator"
+            completionRule="allItemsResolved"/>
+      </bpmn:extensionElements>
+
+      <bpmn:startEvent id="Start_TestObjections"/>
+
+      <bpmn:userTask id="Task_TestObjection" name="Test objection">
+        <bpmn:extensionElements>
+          <cwp:controlledInteraction
+              kind="restrictedTest"
+              creators="facilitator objector"
+              responders="facilitator objector"
+              replyPolicy="designatedRespondersOnly"
+              explicitDone="false"
+              closer="facilitator"
+              closureRule="facilitatorDecisionReady"
+              responseSchema="../schemas/integrative-decision-making.responses.schema.json#/$defs/integrationContribution"/>
+        </bpmn:extensionElements>
+      </bpmn:userTask>
+
+      <bpmn:userTask id="Task_RecordIDMPValidity" name="Record objection validity">
+        <bpmn:extensionElements>
+          <cwp:assignment role="facilitator"/>
+          <cwp:input
+              role="facilitator"
+              responseSchema="../schemas/integrative-decision-making.responses.schema.json#/$defs/validityDecision"
+              completionRule="validResponse"/>
+        </bpmn:extensionElements>
+      </bpmn:userTask>
+
+      <bpmn:endEvent id="End_TestObjections"/>
+      <bpmn:sequenceFlow id="Flow_D_Test1" sourceRef="Start_TestObjections" targetRef="Task_TestObjection"/>
+      <bpmn:sequenceFlow id="Flow_D_Test2" sourceRef="Task_TestObjection" targetRef="Task_RecordIDMPValidity"/>
+      <bpmn:sequenceFlow id="Flow_D_Test3" sourceRef="Task_RecordIDMPValidity" targetRef="End_TestObjections"/>
+    </bpmn:subProcess>
+
+    <bpmn:exclusiveGateway id="Gateway_ValidObjections" name="Valid objections?"/>
+
+    <bpmn:subProcess id="Sub_IntegrationQueue" name="Integrate valid objections">
+      <bpmn:extensionElements>
+        <cwp:dynamicWorkCollection
+            itemType="validObjection"
+            sourceRevision="workItem.sourceRevisionId"
+            applicabilityRevision="workItem.applicableRevisionId"
+            closureRule="allItemsResolved"/>
+        <cwp:managedQueue
+            itemType="validObjection"
+            ordering="facilitator"
+            controllerRole="facilitator"
+            completionRule="allItemsResolved"/>
+      </bpmn:extensionElements>
+
+      <bpmn:startEvent id="Start_Integration"/>
+
+      <bpmn:userTask id="Task_IntegrationDiscussion" name="Integration discussion">
+        <bpmn:extensionElements>
+          <cwp:controlledInteraction
+              kind="discussion"
+              creators="requiredParticipant facilitator"
+              responders="requiredParticipant facilitator"
+              replyPolicy="permittedContributors"
+              explicitDone="false"
+              closer="facilitator"
+              closureRule="amendmentReady"
+              responseSchema="../schemas/integrative-decision-making.responses.schema.json#/$defs/integrationContribution"/>
+        </bpmn:extensionElements>
+      </bpmn:userTask>
+
+      <bpmn:userTask id="Task_RecordAmendment" name="Record amended proposal">
+        <bpmn:extensionElements>
+          <cwp:assignment role="facilitator"/>
+          <cwp:input
+              role="facilitator"
+              responseSchema="../schemas/integrative-decision-making.responses.schema.json#/$defs/amendment"
+              completionRule="validResponse"
+              revisionRef="proposal.currentRevisionId"/>
+          <cwp:artifactAction artifactRef="proposal" action="createRevision"/>
+        </bpmn:extensionElements>
+      </bpmn:userTask>
+
+      <bpmn:userTask id="Task_ConfirmIntegration" name="Confirm integration">
+        <bpmn:extensionElements>
+          <cwp:confirmationGate
+              revisionRef="proposal.currentRevisionId"
+              completionRule="allRequiredConfirmed"
+              responseSchema="../schemas/integrative-decision-making.responses.schema.json#/$defs/integrationConfirmation">
+            <cwp:requiredConfirmation role="objector" claim="objectionResolved"/>
+            <cwp:requiredConfirmation role="proposer" claim="tensionAddressed"/>
+          </cwp:confirmationGate>
+        </bpmn:extensionElements>
+      </bpmn:userTask>
+
+      <bpmn:exclusiveGateway id="Gateway_IntegrationConfirmation" name="Integration confirmed?"/>
+
+      <bpmn:userTask id="Task_RecheckRemainingObjections" name="Recheck remaining objections">
+        <bpmn:extensionElements>
+          <cwp:controlledInteraction
+              kind="statementRound"
+              creators="objector"
+              responders="objector"
+              replyPolicy="none"
+              explicitDone="true"
+              closureRule="allRemainingRechecked"
+              responseSchema="../schemas/integrative-decision-making.responses.schema.json#/$defs/applicability"/>
+          <cwp:dynamicWorkCollection
+              itemType="remainingObjectionApplicability"
+              sourceRevision="workItem.sourceRevisionId"
+              applicabilityRevision="proposal.currentRevisionId"
+              closureRule="allItemsResolved"/>
+        </bpmn:extensionElements>
+      </bpmn:userTask>
+
+      <bpmn:endEvent id="End_Integration"/>
+      <bpmn:sequenceFlow id="Flow_D_Int1" sourceRef="Start_Integration" targetRef="Task_IntegrationDiscussion"/>
+      <bpmn:sequenceFlow id="Flow_D_Int2" sourceRef="Task_IntegrationDiscussion" targetRef="Task_RecordAmendment"/>
+      <bpmn:sequenceFlow id="Flow_D_Int3" sourceRef="Task_RecordAmendment" targetRef="Task_ConfirmIntegration"/>
+      <bpmn:sequenceFlow id="Flow_D_Int4" sourceRef="Task_ConfirmIntegration" targetRef="Gateway_IntegrationConfirmation"/>
+      <bpmn:sequenceFlow id="Flow_D_Int5" sourceRef="Gateway_IntegrationConfirmation" targetRef="Task_RecheckRemainingObjections">
+        <bpmn:extensionElements><cwp:guard predicate="allRequiredConfirmed"/></bpmn:extensionElements>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Flow_D_Int6" sourceRef="Gateway_IntegrationConfirmation" targetRef="Task_IntegrationDiscussion">
+        <bpmn:extensionElements><cwp:guard predicate="confirmationIncomplete"/></bpmn:extensionElements>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Flow_D_Int7" sourceRef="Task_RecheckRemainingObjections" targetRef="End_Integration"/>
+    </bpmn:subProcess>
+
+    <bpmn:serviceTask id="Task_AdoptIDMPProposal" name="Adopt proposal">
+      <bpmn:extensionElements>
+        <cwp:artifactAction artifactRef="proposal" action="adopt"/>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="End_IDMPAdopted" name="Adopted"/>
+    <bpmn:endEvent id="End_IDMPWithdrawn" name="Withdrawn"/>
+
+    <bpmn:sequenceFlow id="Flow_D1" sourceRef="Start_IDMP" targetRef="Task_PresentProposal"/>
+    <bpmn:sequenceFlow id="Flow_D2" sourceRef="Task_PresentProposal" targetRef="Task_ClarifyingQuestions"/>
+    <bpmn:sequenceFlow id="Flow_D3" sourceRef="Task_ClarifyingQuestions" targetRef="Task_ReactionRound"/>
+    <bpmn:sequenceFlow id="Flow_D4" sourceRef="Task_ReactionRound" targetRef="Task_OptionToClarify"/>
+    <bpmn:sequenceFlow id="Flow_D5" sourceRef="Task_OptionToClarify" targetRef="Gateway_ProposerDecision"/>
+    <bpmn:sequenceFlow id="Flow_D6" sourceRef="Gateway_ProposerDecision" targetRef="Task_IDMPObjectionRound">
+      <bpmn:extensionElements><cwp:guard predicate="decisionContinueOrClarify"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_D7" sourceRef="Gateway_ProposerDecision" targetRef="Task_CreateClarifiedRevision">
+      <bpmn:extensionElements><cwp:guard predicate="decisionAmend"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_D8" sourceRef="Task_CreateClarifiedRevision" targetRef="Task_IDMPObjectionRound"/>
+    <bpmn:sequenceFlow id="Flow_D9" sourceRef="Gateway_ProposerDecision" targetRef="Task_WithdrawIDMPProposal">
+      <bpmn:extensionElements><cwp:guard predicate="decisionWithdraw"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_D10" sourceRef="Task_WithdrawIDMPProposal" targetRef="End_IDMPWithdrawn"/>
+    <bpmn:sequenceFlow id="Flow_D11" sourceRef="Task_IDMPObjectionRound" targetRef="Sub_TestObjections"/>
+    <bpmn:sequenceFlow id="Flow_D12" sourceRef="Sub_TestObjections" targetRef="Gateway_ValidObjections"/>
+    <bpmn:sequenceFlow id="Flow_D13" sourceRef="Gateway_ValidObjections" targetRef="Task_AdoptIDMPProposal">
+      <bpmn:extensionElements><cwp:guard predicate="noValidObjections"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_D14" sourceRef="Gateway_ValidObjections" targetRef="Sub_IntegrationQueue">
+      <bpmn:extensionElements><cwp:guard predicate="anyValidObjection"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_D15" sourceRef="Sub_IntegrationQueue" targetRef="Task_IDMPObjectionRound"/>
+    <bpmn:sequenceFlow id="Flow_D16" sourceRef="Task_AdoptIDMPProposal" targetRef="End_IDMPAdopted"/>
+  </bpmn:process>
+</bpmn:definitions>
