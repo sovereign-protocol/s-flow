@@ -19,11 +19,23 @@
       "properties": {
         "candidateId": {
           "type": "string",
+          "title": "Candidate",
+          "description": "The eligible participant you nominate.",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "title": "Reason",
+          "description": "Why this person is a good fit for the role.",
+          "examples": [
+            "They have the relevant experience and enough capacity."
+          ],
           "minLength": 1
         }
       },
       "required": [
-        "candidateId"
+        "candidateId",
+        "reason"
       ],
       "additionalProperties": false
     },

@@ -23,8 +23,13 @@ of this package under `src/s_flow/workflow`; they are not a separate
 application or dependency. See [the runtime documentation](docs/WORKFLOW_RUNTIME.md)
 and [serialization specification](docs/WORKFLOW_SERIALIZATION.md).
 
-Peer-authored response ingestion into a facilitator-owned runtime is the next
-distributed-execution slice.
+The Minimal Consent interface now runs end to end across two clients. A
+participant publishes an immutable response in their own perspective; the
+process creator verifies and applies it to the creator-owned runtime. Process
+and assignment differences use Core's standard transition explanations and
+adopt/rollback reactions. Workflow correction is separate from Core reactions:
+the creator can retract the latest immutable response and S-Flow rebuilds the
+runtime from the remaining response history.
 
 ## Run
 

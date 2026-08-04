@@ -19,6 +19,12 @@ TEMPLATE_FILES = {
     "minimal-consent": "minimal-consent-decision.bpmn",
 }
 
+CANONICAL_TEMPLATE_IDS = (
+    "integrative-election",
+    "integrative-decision-making",
+    "minimal-consent",
+)
+
 
 @lru_cache(maxsize=None)
 def load_bundled_workflow(template_id: str) -> WorkflowDefinition:
@@ -28,3 +34,17 @@ def load_bundled_workflow(template_id: str) -> WorkflowDefinition:
     resource = files("s_flow.workflow").joinpath("templates", filename)
     with as_file(resource) as path:
         return load_workflow(path)
+
+
+def bundled_workflow_templates() -> list[dict[str, str]]:
+    templates = []
+    for template_id in CANONICAL_TEMPLATE_IDS:
+        definition = load_bundled_workflow(template_id)
+        profile = (definition.process_extensions.get("profile") or [{}])[0]
+        templates.append({
+            "id": template_id,
+            "version": definition.template_version,
+            "name": definition.name,
+            "description": str(profile.get("description") or ""),
+        })
+    return templates

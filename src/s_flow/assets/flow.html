@@ -9,110 +9,859 @@
   </head>
   <body>
     <header><div id="shell"></div></header>
+    <div id="toast" class="toast"></div>
+    <div id="reactionMenu" class="reaction-menu" role="menu" hidden></div>
     <main>
-      <section class="panel">
-        <h1 id="title">S-Flow</h1>
-        <p id="position">Create or accept a process to begin.</p>
-        <dl id="summary"></dl>
+      <section id="processPanel" class="panel process-panel">
+        <div class="panel-heading">
+          <div>
+            <p id="templateName" class="eyebrow">Workflow</p>
+            <h1 id="title">S-Flow</h1>
+          </div>
+          <div id="processTools" class="inline-actions"></div>
+        </div>
+        <p id="position" class="position">Choose a process in S-Cockpit to begin.</p>
+        <div id="proposal" class="proposal" hidden></div>
+        <section id="work" class="work"></section>
+        <section id="currentStatus" class="current-status" hidden></section>
+        <details class="process-description">
+          <summary>Process description</summary>
+          <p id="processDescription">
+            The proposer records a proposal. Every required participant then
+            consents to that exact revision or states an objection. Any
+            objection returns the proposal for amendment or withdrawal; prior
+            consent never carries to a new revision.
+          </p>
+        </details>
       </section>
-      <section class="panel">
-        <h2>New process</h2>
-        <form id="create">
-          <label>Title <input id="newTitle" required /></label>
-          <label
-            >Template
-            <select id="template">
-              <option value="integrative-election">Integrative election</option>
-              <option value="idmp">Integrative decision-making</option>
-              <option value="minimal-consent">Consent decision</option>
-            </select>
-          </label>
-          <button>Create</button>
-        </form>
-      </section>
+
+      <aside class="side-column">
+        <section id="peoplePanel" class="panel">
+          <div class="panel-heading">
+            <h2>Participants</h2>
+            <span id="lifecycle" class="status-pill">Setup</span>
+          </div>
+          <div id="people"></div>
+          <div id="setup"></div>
+        </section>
+
+        <section class="panel">
+          <details open>
+            <summary><strong>History</strong></summary>
+            <ol id="history" class="history"></ol>
+          </details>
+        </section>
+      </aside>
     </main>
+
     <script src="/shared-api.js"></script>
     <script src="/shared.js"></script>
     <script>
       const api = SovereignApi.request;
-
-      // The shell reads this rather than being handed a payload, so it always
-      // sees the most recent one without refresh() having to push to it.
+      const el = (id) => document.getElementById(id);
       let state = null;
+      let refreshing = false;
+      let requestedProcess = new URLSearchParams(location.search).get("process_uuid") || "";
 
-      async function refresh() {
-        const payload = await api("/api/flow/process");
-        state = payload;
-        const process = payload.process;
-        SovereignShell.setTopicSelector({
-          label: "Process",
-          topics: (payload.processes || []).map((item) => ({
-            uuid: item.uuid,
-            title: item.title,
-          })),
-          selectedUuid: process?.uuid,
-          onSelect: async (processUuid) => {
-            await api("/api/flow/processes/select", {
-              process_uuid: processUuid,
-            });
-            await refresh();
-          },
-          onRename: async (title) => {
-            await api("/api/flow/processes/rename", {
-              process_uuid: process.uuid,
-              title,
-              expected_content_hash: process.content_hash,
-            });
-            await refresh();
-          },
-        });
-        // Header state - divergences, sharing, agenda, sibling alarms - is
-        // derived from state() and only recomputed when asked. Before the
-        // early return below, so it still updates when nothing is selected.
-        SovereignShell.refresh();
-        if (!process) return;
-        const data = process.data || {};
-        document.getElementById("title").textContent = data.title || "Untitled process";
-        document.getElementById("position").textContent = `Now: ${data.current_stage || "Setup"}`;
-        const summary = document.getElementById("summary");
-        summary.replaceChildren();
-        for (const [label, value] of [
-          ["Template", data.definition_id],
-          ["Last completed", data.last_completed || "Nothing yet"],
-          ["People assigned", payload.assignments.length],
-          ["Agenda items", payload.agenda_items.length],
-        ]) {
-          const term = document.createElement("dt");
-          term.textContent = label;
-          const detail = document.createElement("dd");
-          detail.textContent = value;
-          summary.append(term, detail);
+      function showToast(message, error = false) {
+        const toast = el("toast");
+        toast.textContent = message;
+        toast.classList.toggle("error", error);
+        window.clearTimeout(showToast.timer);
+        showToast.timer = window.setTimeout(() => { toast.textContent = ""; }, 3000);
+      }
+
+      async function run(operation, success) {
+        try {
+          await operation();
+          if (success) showToast(success);
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+          await refresh();
+        } catch (error) {
+          showToast(error?.message || String(error), true);
         }
       }
 
-      document.getElementById("create").onsubmit = async (event) => {
-        event.preventDefault();
-        await api("/api/flow/processes/create", {
-          title: document.getElementById("newTitle").value,
-          definition_id: document.getElementById("template").value,
-          definition_version: "0.2.0",
+      function findNode(node, uuid) {
+        if (!node) return null;
+        if (node.uuid === uuid) return node;
+        for (const child of node.children || []) {
+          const found = findNode(child, uuid);
+          if (found) return found;
+        }
+        return null;
+      }
+
+      function userForParticipant(identityUuid) {
+        return (state?.known_identities || []).find((item) => item.uuid === identityUuid) || {
+          uuid: identityUuid,
+          name: "?",
+          address: "",
+        };
+      }
+
+      function peerLabel(address) {
+        const person = (state?.known_identities || []).find((item) =>
+          item.address === address || (item.addresses || []).includes(address)
+        );
+        if (person?.name) return person.name;
+        return String(address || "a peer").replace(/^relay:/, "").slice(0, 12);
+      }
+
+      function identityName(uuid) {
+        const person = userForParticipant(uuid);
+        return person.name || String(uuid || "Unknown").slice(0, 8);
+      }
+
+      function transitionInfo(uuid) {
+        return state?.transition_by_node?.[uuid] || null;
+      }
+
+      function applyTransitionClass(element, uuid) {
+        [...element.classList]
+          .filter((name) => name.startsWith("stage-"))
+          .forEach((name) => element.classList.remove(name));
+        element.classList.remove("diff");
+        element.removeAttribute("title");
+        const info = transitionInfo(uuid);
+        if (!info || ["settled", "in_flight"].includes(info.stage)) return;
+        element.classList.add("diff", `stage-${info.stage}`);
+        element.title = transitionLabel(info);
+      }
+
+      function needsReaction(uuid) {
+        const info = transitionInfo(uuid);
+        return !!info && !["settled", "in_flight"].includes(info.stage);
+      }
+
+      function reactionButton(node) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "react-button";
+        button.textContent = "React";
+        button.setAttribute("aria-label", "React to proposed differences");
+        const info = transitionInfo(node.uuid);
+        if (info) button.title = transitionLabel(info);
+        button.onclick = (event) => {
+          event.stopPropagation();
+          openReactionMenu(button, node.uuid);
+        };
+        return button;
+      }
+
+      function reactionChoices(uuid) {
+        const info = transitionInfo(uuid);
+        const events = info?.events || (info ? [info] : []);
+        return events.map((event) => {
+          const root = state.peers?.[event.peer_addr];
+          return {
+            label: transitionReactionLabel(event),
+            action: event.reaction || "adopt",
+            peer: {
+              addr: event.peer_addr,
+              missing: !(root && findNode(root, uuid)),
+            },
+          };
         });
-        document.getElementById("newTitle").value = "";
-        await refresh();
+      }
+
+      function closeReactionMenu() {
+        const menu = el("reactionMenu");
+        menu.hidden = true;
+        menu.replaceChildren();
+      }
+
+      function openReactionMenu(anchor, uuid) {
+        const choices = reactionChoices(uuid);
+        if (!choices.length) return showToast("No reaction available", true);
+        const menu = el("reactionMenu");
+        menu.replaceChildren();
+        for (const choice of choices) {
+          const option = document.createElement("button");
+          option.type = "button";
+          option.className = "reaction-menu-option";
+          option.textContent = choice.label;
+          option.onclick = async (event) => {
+            event.stopPropagation();
+            closeReactionMenu();
+            const endpoint = choice.action === "rollback"
+              ? "/api/flow/rollback"
+              : "/api/flow/adopt";
+            await run(() => api(endpoint, {
+              node_uuid: uuid,
+              source_addr: choice.peer.addr,
+              adopt_absence: choice.action === "adopt" && choice.peer.missing,
+              rollback_absence: choice.action === "rollback" && choice.peer.missing,
+            }), choice.action === "rollback" ? "Change taken back" : "Change adopted");
+          };
+          menu.append(option);
+        }
+        menu.hidden = false;
+        const rect = anchor.getBoundingClientRect();
+        menu.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - menu.offsetWidth - 8))}px`;
+        menu.style.top = `${Math.min(rect.bottom + 4, innerHeight - menu.offsetHeight - 8)}px`;
+      }
+
+      document.addEventListener("click", (event) => {
+        if (!event.target.closest("#reactionMenu")) closeReactionMenu();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeReactionMenu();
+      });
+
+      function currentRevision() {
+        const artifact = state?.workflow?.artifacts?.proposal;
+        return (artifact?.revisions || []).find(
+          (revision) => revision.id === artifact.current_revision_id,
+        ) || null;
+      }
+
+      function renderProposal() {
+        const revision = currentRevision();
+        const box = el("proposal");
+        box.hidden = !revision;
+        box.replaceChildren();
+        if (!revision) return;
+        const meta = document.createElement("p");
+        meta.className = "eyebrow";
+        meta.textContent = `Proposal ${revision.id}`;
+        const content = document.createElement("p");
+        content.textContent = revision.content?.proposal || "";
+        box.append(meta, content);
+      }
+
+      function taskForm(task) {
+        const form = document.createElement("form");
+        form.className = "task-form";
+        const heading = document.createElement("h2");
+        heading.textContent = task.label;
+        form.append(heading);
+        if (task.context) {
+          const context = document.createElement("div");
+          context.className = "task-context";
+          const author = task.context.authorId
+            ? `${identityName(task.context.authorId)}: `
+            : "";
+          context.textContent = `${author}${task.context.payload?.statement || humanizeField(task.context.type)}`;
+          form.append(context);
+        }
+        const schema = task.response_schema || {
+          type: "object",
+          properties: { value: { type: "string" } },
+          required: ["value"],
+        };
+        if (schema.description) {
+          const description = document.createElement("p");
+          description.className = "field-help";
+          description.textContent = schema.description;
+          form.append(description);
+        }
+        const fields = document.createElement("div");
+        fields.className = "schema-fields";
+        form.append(fields);
+        let activeSchema = schema;
+        let controls = [];
+
+        const renderFields = (selectedSchema) => {
+          activeSchema = selectedSchema;
+          fields.replaceChildren();
+          controls = schemaControls(selectedSchema, task);
+          controls.forEach((control) => fields.append(control.label));
+          if (!controls.length) {
+            const note = document.createElement("p");
+            note.className = "field-help";
+            note.textContent = "No additional value is required for this response.";
+            fields.append(note);
+          }
+        };
+
+        if (Array.isArray(schema.oneOf) && schema.oneOf.length) {
+          const choice = selectField(
+            "Response",
+            `${task.id}-response-kind`,
+            schema.oneOf.map((branch, index) => [
+              String(index), schemaChoiceLabel(branch, index),
+            ]),
+          );
+          choice.label.classList.add("schema-choice");
+          form.insertBefore(choice.label, fields);
+          choice.input.onchange = () => renderFields(
+            schema.oneOf[Number(choice.input.value)],
+          );
+          renderFields(schema.oneOf[0]);
+        } else {
+          renderFields(schema);
+        }
+
+        form.onsubmit = (event) => {
+          const response = { ...(task.response_defaults || {}) };
+          for (const [name, property] of Object.entries(activeSchema.properties || {})) {
+            if (Object.hasOwn(property, "const")) response[name] = property.const;
+          }
+          for (const control of controls) {
+            const value = control.read();
+            if (value !== undefined) response[control.name] = value;
+          }
+          submitTask(event, task, response);
+        };
+        const submit = document.createElement("button");
+        submit.type = "submit";
+        submit.className = "primary-action";
+        submit.textContent = "Submit";
+        form.append(submit);
+        return form;
+      }
+
+      const FIELD_GUIDANCE = {
+        proposal: ["The complete proposal being considered.", "Example: Adopt policy A from 1 September."],
+        tension: ["The situation or need this proposal should address.", "Example: Requests currently have no clear owner."],
+        statement: ["State the concern or objection concretely.", "Example: This creates an unacceptable compliance risk."],
+        reason: ["Briefly explain why you chose this response.", "Example: The responsible role is still unclear."],
+        explanation: ["Explain what changed or why.", "Example: I selected another candidate after the objection."],
+        question: ["Ask one clear factual question.", "Example: Which teams are included?"],
+        answer: ["Answer the question, or choose the decline response.", "Example: All customer-facing teams."],
+        reaction: ["Share your reaction without starting a discussion thread.", "Example: This addresses the original concern."],
+        message: ["Write the contribution you want participants to see.", "Example: Could we narrow the first implementation step?"],
+        note: ["Optional context for this decision.", "Example: Confirmed after checking the revised wording."],
+        candidateId: ["Select the person this response concerns.", ""],
       };
 
-      // Mount before the first refresh, not after: setTopicSelector returns
-      // silently when the header does not exist yet, so a refresh that runs
-      // first would leave the process picker permanently empty.
+      function humanizeField(value) {
+        return String(value || "Value")
+          .replace(/([a-z])([A-Z])/g, "$1 $2")
+          .replaceAll("_", " ")
+          .replace(/^./, (letter) => letter.toUpperCase());
+      }
+
+      function schemaChoiceLabel(schema, index) {
+        for (const [name, property] of Object.entries(schema.properties || {})) {
+          if (Object.hasOwn(property, "const")) {
+            return humanizeField(String(property.const || name));
+          }
+        }
+        return schema.title || `Option ${index + 1}`;
+      }
+
+      function schemaControls(schema, task) {
+        const required = new Set(schema.required || []);
+        const defaults = task.response_defaults || {};
+        return Object.entries(schema.properties || {})
+          .filter(([name, property]) => (
+            !Object.hasOwn(property, "const") && !Object.hasOwn(defaults, name)
+          ))
+          .map(([name, property]) => schemaControl(
+            name, property, required.has(name), task,
+          ));
+      }
+
+      function schemaControl(name, schema, required, task) {
+        const label = document.createElement("label");
+        label.className = "schema-field";
+        const heading = document.createElement("span");
+        heading.className = "field-title";
+        const caption = document.createElement("strong");
+        caption.textContent = `${schema.title || humanizeField(name)}${required ? " *" : ""}`;
+        const key = document.createElement("code");
+        key.textContent = name;
+        heading.append(caption, key);
+
+        const choices = schemaFieldChoices(name, schema, task);
+        let input;
+        if (choices.length) {
+          input = document.createElement("select");
+          if (!required) {
+            const empty = document.createElement("option");
+            empty.value = "";
+            empty.textContent = "—";
+            input.append(empty);
+          }
+          for (const [value, text] of choices) {
+            const option = document.createElement("option");
+            option.value = String(value);
+            option.textContent = text;
+            input.append(option);
+          }
+        } else if (schema.type === "boolean") {
+          input = document.createElement("input");
+          input.type = "checkbox";
+        } else if (schema.type === "integer" || schema.type === "number") {
+          input = document.createElement("input");
+          input.type = "number";
+          if (schema.type === "number") input.step = "any";
+        } else if (longTextField(name)) {
+          input = document.createElement("textarea");
+          input.rows = 4;
+        } else {
+          input = document.createElement("input");
+          input.type = "text";
+        }
+        input.id = `${task.id}-${name}`.replace(/[^a-zA-Z0-9_-]/g, "-");
+        input.required = required;
+        if (schema.default !== undefined) input.value = String(schema.default);
+
+        const guidance = FIELD_GUIDANCE[name] || [];
+        const explanation = schema.description || guidance[0];
+        const example = schema.examples?.[0] ?? schema.example ?? guidance[1];
+        label.append(heading, input);
+        if (explanation || example !== undefined) {
+          const help = document.createElement("small");
+          help.className = "field-help";
+          help.textContent = [explanation, example].filter(Boolean).join(" ");
+          label.append(help);
+        }
+        return {
+          name,
+          label,
+          read: () => schemaControlValue(input, schema, required),
+        };
+      }
+
+      function schemaFieldChoices(name, schema, task) {
+        if (Array.isArray(task?.response_options?.[name])) {
+          return task.response_options[name].map((option) => [
+            option.value, option.label || option.value,
+          ]);
+        }
+        if (Array.isArray(schema.enum)) {
+          return schema.enum.map((value) => [value, humanizeField(value)]);
+        }
+        if (name === "candidateId") {
+          const eligible = new Set(state.process?.data?.eligible_candidates || []);
+          const candidates = eligible.size
+            ? (state.known_identities || []).filter((person) => eligible.has(person.uuid))
+            : (state.known_identities || []);
+          return candidates.map((person) => [
+            person.uuid, person.name || person.uuid.slice(0, 8),
+          ]);
+        }
+        if (/RevisionId$/.test(name)) {
+          return Object.values(state.workflow?.artifacts || {}).flatMap(
+            (artifact) => (artifact.revisions || []).map((revision) => [
+              revision.id, revision.id,
+            ]),
+          );
+        }
+        return [];
+      }
+
+      function schemaControlValue(input, schema, required) {
+        if (schema.type === "boolean") return input.checked;
+        const raw = input.value.trim();
+        if (!raw && !required) return undefined;
+        if (schema.type === "integer") return Number.parseInt(raw, 10);
+        if (schema.type === "number") return Number(raw);
+        if (schema.type === "array") {
+          return raw.split(",").map((item) => item.trim()).filter(Boolean);
+        }
+        return raw;
+      }
+
+      function longTextField(name) {
+        return [
+          "proposal", "tension", "statement", "reason", "explanation",
+          "question", "answer", "reaction", "message", "note", "text",
+        ].includes(name);
+      }
+
+      function selectField(caption, id, choices) {
+        const label = document.createElement("label");
+        const title = document.createElement("span");
+        title.textContent = caption;
+        const input = document.createElement("select");
+        input.id = id;
+        for (const [value, text] of choices) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = text;
+          input.append(option);
+        }
+        label.append(title, input);
+        return { label, input };
+      }
+
+      async function submitTask(event, task, response) {
+        event.preventDefault();
+        await run(() => api("/api/flow/tasks/submit", {
+          process_uuid: state.process.uuid,
+          task_id: task.id,
+          response,
+          expected_runtime_content_hash: state.workflow.runtime_content_hash,
+        }), "Response submitted");
+      }
+
+      function waitingText(reason) {
+        if (!reason) return "No input is required from you now.";
+        if (reason.type === "responsePending") return "Your response is waiting to be applied by the process creator.";
+        const names = (reason.dependencies || []).map(identityName).filter(Boolean);
+        return names.length ? `Waiting for ${names.join(", ")}.` : "Waiting for the next process step.";
+      }
+
+      function renderWork() {
+        const work = el("work");
+        work.replaceChildren();
+        const workflow = state.workflow;
+        if (!workflow) return;
+        if (workflow.status === "completed") {
+          const outcome = document.createElement("div");
+          outcome.className = "outcome";
+          if (workflow.outcome === "adopted") outcome.textContent = "Proposal adopted";
+          else if (workflow.outcome === "withdrawn") outcome.textContent = "Proposal withdrawn";
+          else if (workflow.outcome === "elected") {
+            const elected = workflow.current_status?.elected_candidate_id;
+            outcome.textContent = elected ? `Elected: ${identityName(elected)}` : "Candidate elected";
+          } else if (workflow.outcome === "void") outcome.textContent = "Election ended without a result";
+          else outcome.textContent = humanizeField(workflow.outcome || "Complete");
+          work.append(outcome);
+          return;
+        }
+        const tasks = workflow.personal?.tasks || [];
+        if (tasks.length) {
+          tasks.forEach((task) => work.append(taskForm(task)));
+          return;
+        }
+        const waiting = document.createElement("div");
+        waiting.className = "waiting";
+        waiting.textContent = waitingText(workflow.personal?.waiting_reason);
+        work.append(waiting);
+      }
+
+      function renderPeople() {
+        const people = el("people");
+        people.replaceChildren();
+        const grouped = new Map();
+        for (const assignment of state.assignments || []) {
+          const identity = assignment.data.identity_uuid;
+          if (!grouped.has(identity)) grouped.set(identity, []);
+          grouped.get(identity).push(assignment);
+        }
+        for (const [identity, assignments] of grouped) {
+          const assignment = assignments[0];
+          const row = document.createElement("div");
+          row.className = "person-row";
+          const changed = assignments.find((item) => transitionInfo(item.uuid));
+          applyTransitionClass(row, changed?.uuid || assignment.uuid);
+          const text = document.createElement("div");
+          const name = document.createElement("strong");
+          name.textContent = assignment.person?.name || identityName(identity);
+          const badges = document.createElement("span");
+          badges.className = "role-badges";
+          for (const item of assignments) {
+            if (item.data.role === "requiredParticipant") continue;
+            const badge = document.createElement("span");
+            badge.className = "role-badge";
+            badge.textContent = humanizeField(item.data.role);
+            badges.append(badge);
+          }
+          text.append(name);
+          if (badges.childElementCount) text.append(badges);
+          row.append(text);
+          const reaction = assignments.find((item) => needsReaction(item.uuid));
+          if (reaction) row.append(reactionButton(reaction));
+          const participantAssignment = assignments.find(
+            (item) => item.data.role === "requiredParticipant",
+          );
+          const removable = state.process.data.lifecycle === "setup"
+            && state.process.data.created_by_identity_uuid === state.identity_uuid
+            && identity !== state.identity_uuid
+            && participantAssignment;
+          if (removable) {
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "small-button danger-action";
+            remove.textContent = "Remove";
+            remove.onclick = () => run(() => api("/api/flow/assignments/delete", {
+              process_uuid: state.process.uuid,
+              assignment_uuid: participantAssignment.uuid,
+            }), "Participant removed");
+            row.append(remove);
+          }
+          people.append(row);
+        }
+      }
+
+      function renderSetup() {
+        const setup = el("setup");
+        setup.replaceChildren();
+        const process = state.process;
+        if (process.data.lifecycle !== "setup") return;
+        const owner = process.data.created_by_identity_uuid === state.identity_uuid;
+        if (!owner) {
+          const note = document.createElement("p");
+          note.className = "muted";
+          note.textContent = "Waiting for the process creator to finish setup.";
+          setup.append(note);
+          return;
+        }
+        const assigned = new Set(
+          (state.assignments || [])
+            .filter((item) => item.data.role === "requiredParticipant")
+            .map((item) => item.data.identity_uuid),
+        );
+        const available = (state.known_identities || []).filter((item) => !assigned.has(item.uuid));
+        if (available.length) {
+          const form = document.createElement("form");
+          form.className = "compact-form";
+          const select = document.createElement("select");
+          for (const person of available) {
+            const option = document.createElement("option");
+            option.value = person.uuid;
+            option.textContent = person.name || person.uuid.slice(0, 8);
+            select.append(option);
+          }
+          const add = document.createElement("button");
+          add.type = "submit";
+          add.textContent = "Add participant";
+          form.append(select, add);
+          form.onsubmit = (event) => {
+            event.preventDefault();
+            run(() => api("/api/flow/assignments/set", {
+              process_uuid: process.uuid,
+              identity_uuid: select.value,
+              role: "requiredParticipant",
+              required: true,
+            }), "Participant added");
+          };
+          setup.append(form);
+        }
+        const start = document.createElement("button");
+        start.type = "button";
+        start.className = "primary-action start-button";
+        start.textContent = "Start process";
+        start.onclick = () => run(() => api("/api/flow/processes/start", {
+          process_uuid: process.uuid,
+        }), "Process started");
+        setup.append(start);
+      }
+
+      function renderHistory() {
+        const history = el("history");
+        history.replaceChildren();
+        const items = state.workflow?.history || [];
+        if (!items.length) {
+          const empty = document.createElement("li");
+          empty.textContent = "No completed steps yet.";
+          history.append(empty);
+          return;
+        }
+        const publishedNodes = new Set(
+          items.filter((item) => item.type === "roundPublished")
+            .map((item) => item.node_id),
+        );
+        for (const item of [...items].reverse()) {
+          if (
+            item.type === "taskCompleted"
+            && !item.data?.response
+            && publishedNodes.has(item.node_id)
+          ) continue;
+          for (const line of historyLines(item)) {
+            const row = document.createElement("li");
+            row.textContent = line;
+            history.append(row);
+          }
+        }
+      }
+
+      function historyLines(item) {
+        if (item.type === "roundPublished") {
+          return (item.data?.responses || []).map((entry) =>
+            responseSummary(item.node_id, entry.userId, entry.response),
+          );
+        }
+        if (item.data?.response) {
+          return [responseSummary(item.node_id, item.data.userId, item.data.response)];
+        }
+        return [item.data?.userId
+          ? `${identityName(item.data.userId)}: ${item.message.replace(item.data.userId, "").trim()}`
+          : item.message];
+      }
+
+      function responseSummary(nodeId, userId, response) {
+        const user = identityName(userId);
+        if (nodeId === "Task_Nominate") {
+          return `${user} nominated ${identityName(response.candidateId)} — ${response.reason}`;
+        }
+        if (nodeId === "Task_ChangeNominations") {
+          return response.decision === "keep"
+            ? `${user} kept their nomination.`
+            : `${user} nominated ${identityName(response.candidateId)} — ${response.reason}`;
+        }
+        if (response.decision === "objection") {
+          return `${user} objected: ${response.statement}`;
+        }
+        if (response.decision === "noObjection") return `${user} had no objection.`;
+        const values = Object.entries(response || {})
+          .filter(([key]) => !key.toLowerCase().endsWith("id"))
+          .map(([key, value]) => `${humanizeField(key)}: ${humanizeField(value)}`);
+        return `${user}: ${values.join("; ") || "Response submitted"}`;
+      }
+
+      function renderCurrentStatus() {
+        const box = el("currentStatus");
+        box.replaceChildren();
+        const status = state.workflow?.current_status || {};
+        const nominations = status.nominations || [];
+        const objections = status.objections || [];
+        const proposed = status.proposed_candidate_id;
+        box.hidden = !nominations.length && !objections.length && !proposed;
+        if (box.hidden) return;
+        const heading = document.createElement("h2");
+        heading.textContent = "Current status";
+        box.append(heading);
+        if (proposed) {
+          const line = document.createElement("p");
+          const label = document.createElement("strong");
+          label.textContent = "Proposed candidate: ";
+          line.append(label, identityName(proposed));
+          box.append(line);
+        }
+        if (nominations.length) {
+          const title = document.createElement("h3");
+          title.textContent = "Nominations";
+          const list = document.createElement("ul");
+          for (const nomination of nominations) {
+            const row = document.createElement("li");
+            row.textContent = `${identityName(nomination.user_id)} → ${identityName(nomination.candidate_id)}${nomination.reason ? ` — ${nomination.reason}` : ""}`;
+            list.append(row);
+          }
+          box.append(title, list);
+        }
+        if (objections.length) {
+          const title = document.createElement("h3");
+          title.textContent = "Objections";
+          const list = document.createElement("ul");
+          for (const objection of objections) {
+            const row = document.createElement("li");
+            const result = objection.decision ? ` (${humanizeField(objection.decision)})` : "";
+            row.textContent = `${identityName(objection.author_id)}: ${objection.statement}${result}`;
+            list.append(row);
+          }
+          box.append(title, list);
+        }
+      }
+
+      function render() {
+        const process = state?.process;
+        el("processTools").replaceChildren();
+        if (!process) {
+          el("templateName").textContent = "Workflow";
+          el("title").textContent = "S-Flow";
+          el("position").textContent = "Create a flow in S-Cockpit or accept an invitation.";
+          el("work").replaceChildren();
+          el("currentStatus").replaceChildren();
+          el("currentStatus").hidden = true;
+          el("people").replaceChildren();
+          el("setup").replaceChildren();
+          renderHistory();
+          return;
+        }
+        el("templateName").textContent = state.workflow?.definition?.name || "Workflow";
+        el("processDescription").textContent = state.workflow?.definition?.description
+          || "Follow the current step and wait when another participant needs to respond.";
+        el("title").textContent = process.data.title || "Untitled process";
+        const position = state.workflow?.position || {};
+        const current = position.current_stages?.[0]?.name || process.data.current_stage || "Complete";
+        const previous = position.last_completed_stage?.name || "Created";
+        el("position").textContent = `${previous} → ${current}`;
+        el("lifecycle").textContent = state.workflow?.outcome || process.data.lifecycle || "setup";
+        applyTransitionClass(el("processPanel"), process.uuid);
+        if (state.workflow?.can_return_to_setup) {
+          const participants = document.createElement("button");
+          participants.type = "button";
+          participants.className = "small-button back-button";
+          participants.textContent = "Edit participants";
+          participants.title = "Return this workflow to participant setup";
+          participants.onclick = () => {
+            if (!window.confirm(
+              "Return to participant setup? Responses from this workflow run will be set aside and the process must be started again.",
+            )) return;
+            run(() => api("/api/flow/processes/return_to_setup", {
+              process_uuid: process.uuid,
+            }), "Returned to participant setup");
+          };
+          el("processTools").append(participants);
+        }
+        if (state.workflow?.can_go_back) {
+          const back = document.createElement("button");
+          back.type = "button";
+          back.className = "small-button back-button";
+          back.textContent = "Go back";
+          back.title = "Retract the latest response and reopen the previous input";
+          back.onclick = () => {
+            if (!window.confirm(
+              "Retract the latest response and return to the previous input? The original response remains in history.",
+            )) return;
+            run(() => api("/api/flow/processes/go_back", {
+              process_uuid: process.uuid,
+            }), "Returned to the previous input");
+          };
+          el("processTools").append(back);
+        }
+        if (needsReaction(process.uuid)) el("processTools").append(reactionButton(process));
+        renderProposal();
+        renderWork();
+        renderCurrentStatus();
+        renderPeople();
+        renderSetup();
+        renderHistory();
+      }
+
+      async function refresh() {
+        if (refreshing) return;
+        const active = document.activeElement;
+        if (
+          active
+          && active !== document.body
+          && active.matches("input, textarea, select, [contenteditable='true']")
+        ) return;
+        refreshing = true;
+        try {
+          if (requestedProcess) {
+            await api("/api/flow/processes/select", {
+              process_uuid: requestedProcess,
+            });
+            requestedProcess = "";
+          }
+          state = await api("/api/flow/process");
+          const process = state.process;
+          SovereignShell.setTopicSelector({
+            label: "Process",
+            topics: (state.processes || []).map((item) => ({ uuid: item.uuid, title: item.title })),
+            selectedUuid: process?.uuid,
+            onSelect: async (processUuid) => {
+              await api("/api/flow/processes/select", { process_uuid: processUuid });
+              await refresh();
+            },
+            onRename: async (title) => {
+              await api("/api/flow/processes/rename", {
+                process_uuid: process.uuid,
+                title,
+                expected_content_hash: process.content_hash,
+              });
+              await refresh();
+            },
+          });
+          SovereignShell.refresh();
+          render();
+        } catch (error) {
+          showToast(error?.message || String(error), true);
+        } finally {
+          refreshing = false;
+        }
+      }
+
       (async () => {
         await SovereignShell.mount({
-          container: document.getElementById("shell"),
+          container: el("shell"),
           applicationId: "flow",
           topicUuid: () => state?.process?.uuid || "",
           state: () => state || {},
-          // The agenda pane is the shell's; S-Flow supplies only where its
-          // routes are and what its topic is called. Omitting this hides the
-          // pane rather than breaking it.
+          describeNode: (uuid) => {
+            if (state?.process?.uuid === uuid) return state.process.data.title || "Process";
+            const assignment = (state?.assignments || []).find((item) => item.uuid === uuid);
+            return assignment ? identityName(assignment.data.identity_uuid) : "";
+          },
           agendaRoutes: {
             topicKey: "process_uuid",
             create: "/api/flow/agenda/create",
@@ -123,6 +872,7 @@
           onChanged: () => refresh(),
         });
         await refresh();
+        window.setInterval(refresh, 2000);
       })();
     </script>
   </body>

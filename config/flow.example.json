@@ -1,6 +1,6 @@
 {
   "applications": [{ "module": "s_flow.application" }],
-  "primary_application_id": "decision",
+  "primary_application_id": "flow",
   "advertise_host": "127.0.0.1",
   "offer_http_channel": true
 }

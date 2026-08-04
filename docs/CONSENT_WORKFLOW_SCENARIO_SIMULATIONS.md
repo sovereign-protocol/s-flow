@@ -41,19 +41,17 @@ Actors:
 | 1 | Start → Present role | Farah `ACT(present role)`; participants `WAIT(Farah)` |
 | 2 | Present role → Nomination | Alice, Ben and Cara each `ACT(nominate)` |
 | 3 | Present role → Nomination | Alice nominates Dana and becomes `WAIT(Ben, Cara)`; nomination remains unpublished |
-| 4 | Nomination → Sharing | Ben nominates Eli, Cara nominates Eli; all nominations publish together |
-| 5 | Nomination → Sharing | Alice `ACT(share)`; Ben and Cara `WAIT(prior turn)` |
-| 6 | Nomination → Sharing | After Alice, Ben and Cara complete their turns in order |
-| 7 | Sharing → Nomination change | Each participant explicitly records `keep` |
-| 8 | Nomination change → Ranking | Application counts Dana 1, Eli 2 |
-| 9 | Ranking → Objection round | Eli is proposed; all receive `INFO(proposed Eli)` |
-| 10 | Ranking → Objection round | Alice and Ben record no objection; Cara records an objection |
-| 11 | Objection round → Validity decision | Farah `ACT(record validity)`; participants `WAIT(Farah)` |
-| 12 | Validity decision → Nomination change | Farah records valid; Eli is excluded; all receive `INFO(Eli excluded)` |
-| 13 | Validity decision → Nomination change | Alice may keep Dana; Ben and Cara must change because Eli is excluded |
-| 14 | Nomination change → Ranking | All current nominations are Dana; application ranks Dana first |
-| 15 | Ranking → Objection round | Dana is proposed; every participant records no objection |
-| 16 | Objection round → Elected | Dana is elected; all receive `INFO(result)` |
+| 4 | Nomination → Nomination change | Ben nominates Eli, Cara nominates Eli; nominations and reasons publish together |
+| 5 | Nomination change | All participants can explicitly record `keep` in parallel |
+| 6 | Nomination change → Ranking | Application counts Dana 1, Eli 2 |
+| 7 | Ranking → Objection round | Eli is proposed; all receive `INFO(proposed Eli)` |
+| 8 | Objection round | Alice and Ben record no objection; Cara records an objection; responses publish when all submit |
+| 9 | Objection round → Validity decision | Farah `ACT(record validity)` with Cara's objection shown as context; participants `WAIT(Farah)` |
+| 10 | Validity decision → Nomination change | Farah records valid; Eli is excluded; all receive `INFO(Eli excluded)` |
+| 11 | Nomination change | Alice may keep Dana; Ben and Cara must change because Eli is excluded |
+| 12 | Nomination change → Ranking | All current nominations are Dana; application ranks Dana first |
+| 13 | Ranking → Objection round | Dana is proposed; every participant records no objection |
+| 14 | Objection round → Elected | Dana is elected; all receive `INFO(result)` |
 
 Assertions:
 

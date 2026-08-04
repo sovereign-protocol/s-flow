@@ -104,6 +104,11 @@ class WorkflowEngine:
             task.node_id,
             userId=user_id,
             taskId=task.id,
+            **(
+                {"response": dict(response)}
+                if self._response_publication(task.node_id) == "immediate"
+                else {}
+            ),
         )
 
         if task.kind == "interactionCreator":
@@ -153,6 +158,7 @@ class WorkflowEngine:
                 "nodeId": task.node_id,
                 "label": self.definition.nodes[task.node_id].name,
                 "kind": task.kind,
+                "schemaRef": task.schema_ref,
                 "metadata": dict(task.metadata),
             }
             for task in open_tasks
@@ -501,6 +507,8 @@ class WorkflowEngine:
             "rolePresentationNotRequired": not bool(
                 instance.data.get("rolePresentationRequired", False)
             ),
+            "always": True,
+            "never": False,
             "uniqueTopCandidate": len(instance.data.get("topCandidates", [])) == 1,
             "topTie": len(instance.data.get("topCandidates", [])) > 1,
             "decisionSelectTiedCandidate": latest_response.get("decision") == "select",
@@ -641,6 +649,7 @@ class WorkflowEngine:
         if input_spec:
             users = instance.role_users(input_spec["role"])
             for user_id in users:
+                metadata = self._context_metadata(instance, input_spec)
                 self._new_task(
                     instance,
                     node.id,
@@ -648,6 +657,7 @@ class WorkflowEngine:
                     user_id,
                     "input",
                     input_spec.get("responseSchema"),
+                    metadata=metadata,
                 )
             return
 
@@ -682,8 +692,31 @@ class WorkflowEngine:
                 "round",
                 spec.get("responseSchema"),
                 status="open" if not sequential or index == 0 else "locked",
-                metadata={"order": index},
+                metadata={
+                    "order": index,
+                    "publication": spec.get("publication", "immediate"),
+                },
             )
+
+    @staticmethod
+    def _context_metadata(
+        instance: WorkflowInstance,
+        spec: dict[str, Any],
+    ) -> dict[str, Any]:
+        item = instance.current_work_item()
+        if not item:
+            return {}
+        metadata: dict[str, Any] = {
+            "context": {
+                "type": item.item_type,
+                "authorId": item.author_id,
+                "payload": dict(item.payload),
+            },
+        }
+        context_field = spec.get("contextField")
+        if context_field:
+            metadata["responseDefaults"] = {str(context_field): item.id}
+        return metadata
 
     def _create_confirmation_tasks(
         self,
@@ -1065,6 +1098,7 @@ class WorkflowEngine:
     ) -> None:
         node = self.definition.nodes[node_id]
         self._update_node_semantics(instance, node, visit)
+        self._publish_completed_round(instance, node, visit)
         self._apply_artifact_actions(instance, node)
         self._mark_stage_completed(instance, node)
         target = self._select_outgoing(instance, node)
@@ -1077,6 +1111,7 @@ class WorkflowEngine:
         visit: int,
     ) -> str | None:
         self._update_node_semantics(instance, node, visit)
+        self._publish_completed_round(instance, node, visit)
         self._apply_artifact_actions(instance, node)
         self._mark_stage_completed(instance, node)
         return self._select_outgoing(instance, node)
@@ -1107,9 +1142,15 @@ class WorkflowEngine:
                 for record in records
                 if record["kind"] == "round"
             }
+            instance.data["currentNominationReasons"] = {
+                record["userId"]: record["response"].get("reason", "")
+                for record in records
+                if record["kind"] == "round"
+            }
 
         if node.id == "Task_ChangeNominations":
             nominations = instance.data.setdefault("currentNominations", {})
+            reasons = instance.data.setdefault("currentNominationReasons", {})
             excluded = set(instance.data.get("excludedCandidates", []))
             for record in records:
                 if record["kind"] != "round":
@@ -1121,6 +1162,7 @@ class WorkflowEngine:
                         raise TaskActionError("Cannot keep an excluded nominee.")
                 else:
                     nominations[user_id] = response["candidateId"]
+                    reasons[user_id] = response.get("reason", "")
 
         if node.id in {"Task_RecordValidity", "Task_RecordIDMPValidity"}:
             item = instance.current_work_item()
@@ -1146,6 +1188,46 @@ class WorkflowEngine:
             ]
             instance.data["lastConfirmationComplete"] = bool(confirmations) and all(
                 decision == "confirmed" for decision in confirmations
+            )
+
+    def _response_publication(self, node_id: str) -> str:
+        node = self.definition.nodes[node_id]
+        round_spec = node.extension("humanRound")
+        return str((round_spec or {}).get("publication", "immediate"))
+
+    def _publish_completed_round(
+        self,
+        instance: WorkflowInstance,
+        node: Any,
+        visit: int,
+    ) -> None:
+        spec = node.extension("humanRound")
+        if not spec:
+            return
+        responses = [
+            {
+                "userId": record["userId"],
+                "response": dict(record["response"]),
+            }
+            for record in instance.node_outputs.get(node.id, [])
+            if record["visit"] == visit and record["kind"] == "round"
+        ]
+        publication = str(spec.get("publication", "immediate"))
+        record = {
+            "nodeId": node.id,
+            "label": node.name,
+            "visit": visit,
+            "publication": publication,
+            "responses": responses,
+        }
+        instance.data.setdefault("publishedRounds", []).append(record)
+        if publication == "onRoundComplete":
+            instance.emit(
+                "roundPublished",
+                f"Published {node.name} responses.",
+                node.id,
+                visit=visit,
+                responses=responses,
             )
 
     def _apply_artifact_actions(self, instance: WorkflowInstance, node: Any) -> None:
