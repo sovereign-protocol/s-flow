@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Added a facade-level Integrative Election command that atomically configures
+  the frozen required-participant snapshot, counterpart facilitator, eligible
+  candidates, and starts the process. Consumers never manipulate Flow runtime
+  or assignment nodes directly.
+- Added the versioned `s-flow.decision-result` facade contract. It exposes a
+  process's definition, lifecycle, terminal outcome, selected candidate,
+  frozen participant assignments, facilitator, and canonical SHA-256 result
+  hash without exposing S-Flow's runtime-node layout.
+
 Nothing has been published from this repository yet. The entries below are
 what a first release would carry.
 
