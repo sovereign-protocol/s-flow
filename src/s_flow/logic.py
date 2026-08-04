@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 
 from sovereign import ApplicationRegistration, ProtocolNode, Session, SessionResult
 
@@ -28,6 +30,25 @@ ROLE_TYPES = frozenset({
     "observer",
 })
 DISPLAYED_TRANSITION_TYPES = frozenset({PROCESS_TYPE, ASSIGNMENT_TYPE})
+DECISION_RESULT_CONTRACT_ID = "s-flow.decision-result"
+DECISION_RESULT_CONTRACT_VERSION = 1
+
+
+def canonical_decision_result_hash(result: dict) -> str:
+    """Hash every v1 result field except the hash itself."""
+    unsigned = {
+        key: copy.deepcopy(value)
+        for key, value in result.items()
+        if key != "result_hash"
+    }
+    encoded = json.dumps(
+        unsigned,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
 class FlowLogic:
@@ -136,6 +157,87 @@ class FlowLogic:
             "ok",
             value=process.uuid,
             effects=effects,
+        )
+
+    def create_integrative_election(
+        self,
+        title: str,
+        participant_uuids: list[str],
+        facilitator_uuid: str,
+        eligible_candidate_uuids: list[str] | None = None,
+        definition_version: str = "0.2.0",
+    ) -> SessionResult:
+        """Create, configure, and start an election through one facade call."""
+        participants = list(dict.fromkeys(
+            str(actor or "").strip()
+            for actor in participant_uuids
+            if str(actor or "").strip()
+        ))
+        facilitator = str(facilitator_uuid or "").strip()
+        candidates = list(dict.fromkeys(
+            str(actor or "").strip()
+            for actor in (
+                eligible_candidate_uuids
+                if eligible_candidate_uuids is not None
+                else participants
+            )
+            if str(actor or "").strip()
+        ))
+        if not participants:
+            return SessionResult(
+                "error", reason="an election requires participants",
+            )
+        if not facilitator:
+            return SessionResult(
+                "error", reason="an election requires a facilitator",
+            )
+        if not candidates:
+            return SessionResult(
+                "error", reason="an election requires eligible candidates",
+            )
+        created = self.create_process(
+            title, "integrative-election", definition_version,
+        )
+        if created.status != "ok":
+            return created
+        process_uuid = created.value
+        process = self._node(process_uuid, PROCESS_TYPE)
+        effects = list(created.effects)
+
+        def fail(result: SessionResult) -> SessionResult:
+            self._remove_local_process(process)
+            return result
+
+        for assignment in list(self.assignments(process)):
+            removed = self.session.delete(assignment.uuid)
+            if removed.status != "ok":
+                return fail(removed)
+            effects.extend(removed.effects)
+        assigned = self.set_assignment(
+            process_uuid, facilitator, "facilitator", True,
+        )
+        if assigned.status != "ok":
+            return fail(assigned)
+        effects.extend(assigned.effects)
+        for actor_uuid in participants:
+            assigned = self.set_assignment(
+                process_uuid, actor_uuid, "requiredParticipant", True,
+            )
+            if assigned.status != "ok":
+                return fail(assigned)
+            effects.extend(assigned.effects)
+        configured = self.configure_election(
+            process_uuid, candidates, False,
+        )
+        if configured.status != "ok":
+            return fail(configured)
+        effects.extend(configured.effects)
+        started = self.start_process(process_uuid)
+        if started.status != "ok":
+            return fail(started)
+        effects.extend(started.effects)
+        return SessionResult(
+            "ok", value=process_uuid, effects=effects,
         )
 
     def accept_process_invitation(self, subtree: ProtocolNode) -> SessionResult:
@@ -539,6 +641,84 @@ class FlowLogic:
             "content_hash": process.content_hash,
             "can_delete": self._is_process_owner(process),
             "can_leave": not self._is_process_owner(process),
+        }
+
+    def decision_result(self, process_uuid: str) -> dict | None:
+        """Return the stable, detached result contract for one process.
+
+        The contract is available before completion so a consumer can
+        distinguish an incomplete process from a missing or malformed one.
+        Application internals, runtime nodes and event history stay private.
+        """
+        process = self._node(process_uuid, PROCESS_TYPE)
+        if process is None:
+            return None
+        projection = self.workflow.projection(
+            process, self.session.identity.uuid,
+        )
+        assignments = sorted(
+            (
+                {
+                    "identity_uuid": str(
+                        assignment.data.get("identity_uuid") or ""
+                    ),
+                    "role": str(assignment.data.get("role") or ""),
+                    "required": bool(assignment.data.get("required")),
+                }
+                for assignment in self.assignments(process)
+                if assignment.data.get("role") != "facilitator"
+            ),
+            key=lambda item: (
+                item["identity_uuid"], item["role"], not item["required"],
+            ),
+        )
+        facilitators = sorted({
+            str(assignment.data.get("identity_uuid") or "")
+            for assignment in self.assignments(process)
+            if assignment.data.get("role") == "facilitator"
+            and assignment.data.get("identity_uuid")
+        })
+        current = projection.get("current_status") or {}
+        position = projection.get("position") or {}
+        current_stages = position.get("current_stages") or []
+        current_stage = ", ".join(
+            str(stage.get("name") or stage.get("id") or "")
+            for stage in current_stages
+            if isinstance(stage, dict)
+            and (stage.get("name") or stage.get("id"))
+        )
+        last_completed = position.get("last_completed_stage") or {}
+        result = {
+            "contract_id": DECISION_RESULT_CONTRACT_ID,
+            "contract_version": DECISION_RESULT_CONTRACT_VERSION,
+            "process_uuid": process.uuid,
+            "definition_id": str(process.data.get("definition_id") or ""),
+            "definition_version": str(
+                process.data.get("definition_version") or ""
+            ),
+            "lifecycle": str(
+                projection.get("status")
+                or process.data.get("lifecycle")
+                or ""
+            ),
+            "current_stage": current_stage,
+            "last_completed_stage": str(
+                last_completed.get("name")
+                or last_completed.get("id")
+                or ""
+            ),
+            "terminal_outcome": projection.get("outcome"),
+            "selected_candidate_uuid": (
+                current.get("elected_candidate_id")
+            ),
+            "participant_snapshot": assignments,
+            "facilitator_uuid": (
+                facilitators[0] if len(facilitators) == 1 else None
+            ),
+        }
+        return {
+            **result,
+            "result_hash": canonical_decision_result_hash(result),
         }
 
     def collaboration_context(

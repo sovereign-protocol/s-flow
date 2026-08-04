@@ -23,6 +23,9 @@ class FlowFacade:
     def process_summary(self, process: ProtocolNode) -> dict:
         return self._logic.process_summary(process)
 
+    def decision_result(self, process_uuid: str) -> dict | None:
+        return self._logic.decision_result(process_uuid)
+
     def collaboration_context(
         self, process_uuid: str, network: dict | None = None,
     ) -> dict:
@@ -33,6 +36,22 @@ class FlowFacade:
     ):
         return self._logic.create_process(
             title, definition_id, definition_version,
+        )
+
+    def create_integrative_election(
+        self,
+        title: str,
+        participant_uuids: list[str],
+        facilitator_uuid: str,
+        eligible_candidate_uuids: list[str] | None = None,
+        definition_version: str = "0.2.0",
+    ):
+        return self._logic.create_integrative_election(
+            title,
+            participant_uuids,
+            facilitator_uuid,
+            eligible_candidate_uuids,
+            definition_version,
         )
 
     def rename_process(

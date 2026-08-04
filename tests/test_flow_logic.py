@@ -8,6 +8,7 @@ from s_flow.logic import (
     FLOW_APPLICATION_ID,
     PROCESS_TYPE,
     FlowLogic,
+    canonical_decision_result_hash,
 )
 from s_flow.workflow_adapter import (
     RESPONSE_TYPE,
@@ -257,6 +258,104 @@ class FlowLogicTests(unittest.TestCase):
 
         self.assertEqual(rejected.status, "error")
         self.assertIn("advanced while you were responding", rejected.reason)
+
+    def test_integrative_election_exposes_stable_terminal_result(self):
+        process_uuid = self.logic.create_process("Elect secretary").value
+        identity_uuid = self.session.identity.uuid
+        self.assertEqual(self.logic.start_process(process_uuid).status, "ok")
+        responses = {
+            "Task_Nominate": {
+                "candidateId": identity_uuid,
+                "reason": "Available",
+            },
+            "Task_ChangeNominations": {"decision": "keep"},
+            "Task_ObjectionRound": {"decision": "noObjection"},
+        }
+        while True:
+            workflow = self.logic.process_payload(process_uuid)["workflow"]
+            if workflow["status"] == "completed":
+                break
+            task = workflow["personal"]["tasks"][0]
+            self.assertEqual(self.logic.submit_task(
+                process_uuid,
+                task["id"],
+                responses[task["nodeId"]],
+                workflow["runtime_content_hash"],
+            ).status, "ok")
+
+        result = self.logic.decision_result(process_uuid)
+
+        self.assertEqual(result["contract_id"], "s-flow.decision-result")
+        self.assertEqual(result["contract_version"], 1)
+        self.assertEqual(result["process_uuid"], process_uuid)
+        self.assertEqual(result["definition_id"], "integrative-election")
+        self.assertEqual(result["definition_version"], "0.2.0")
+        self.assertEqual(result["lifecycle"], "completed")
+        self.assertEqual(result["current_stage"], "")
+        self.assertTrue(result["last_completed_stage"])
+        self.assertEqual(result["terminal_outcome"], "elected")
+        self.assertEqual(result["selected_candidate_uuid"], identity_uuid)
+        self.assertEqual(result["facilitator_uuid"], identity_uuid)
+        self.assertEqual(result["participant_snapshot"], [{
+            "identity_uuid": identity_uuid,
+            "role": "requiredParticipant",
+            "required": True,
+        }])
+        self.assertEqual(
+            result["result_hash"], canonical_decision_result_hash(result),
+        )
+
+    def test_facade_election_command_freezes_roles_and_starts_process(self):
+        facilitator = "facilitator-actor"
+        participants = ["member-b", "member-a", "member-b"]
+
+        created = self.logic.create_integrative_election(
+            "Elect Identity",
+            participants,
+            facilitator,
+            ["member-a", "member-b"],
+        )
+
+        self.assertEqual(created.status, "ok")
+        result = self.logic.decision_result(created.value)
+        self.assertEqual(result["lifecycle"], "active")
+        self.assertTrue(result["current_stage"])
+        self.assertEqual(result["facilitator_uuid"], facilitator)
+        self.assertEqual(result["participant_snapshot"], [
+            {
+                "identity_uuid": "member-a",
+                "role": "requiredParticipant",
+                "required": True,
+            },
+            {
+                "identity_uuid": "member-b",
+                "role": "requiredParticipant",
+                "required": True,
+            },
+        ])
+        process = self.session.protocol.index[created.value]
+        self.assertEqual(process.data["eligible_candidates"], [
+            "member-a", "member-b",
+        ])
+        self.assertEqual(
+            self.logic.set_assignment(
+                created.value, "late-member", "requiredParticipant", True,
+            ).status,
+            "error",
+        )
+
+    def test_incomplete_process_has_a_hashable_non_terminal_result(self):
+        process_uuid = self.logic.create_process("Not started").value
+
+        result = self.logic.decision_result(process_uuid)
+
+        self.assertEqual(result["lifecycle"], "setup")
+        self.assertIsNone(result["terminal_outcome"])
+        self.assertIsNone(result["selected_candidate_uuid"])
+        self.assertEqual(
+            result["result_hash"], canonical_decision_result_hash(result),
+        )
+        self.assertIsNone(self.logic.decision_result("missing"))
 
     def test_go_back_retracts_response_and_reopens_same_input(self):
         process_uuid = self.logic.create_process(

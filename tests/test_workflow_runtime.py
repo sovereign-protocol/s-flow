@@ -284,6 +284,53 @@ class ElectionRuntimeTests(unittest.TestCase):
         self.assertEqual(instance.outcome, "elected")
         self.assertEqual(instance.data["electedCandidate"], "eli")
 
+    def test_facilitator_resolves_tie_before_terminal_election(self):
+        instance = self.engine.create_instance(
+            "tied-election",
+            {
+                "facilitator": ["farah"],
+                "requiredParticipant": ["alice", "ben"],
+            },
+            data={
+                "rolePresentationRequired": False,
+                "eligibilityMode": "closed",
+                "eligibleCandidates": ["dana", "eli"],
+            },
+        )
+        self.engine.start(instance)
+        for user_id, candidate_id in (("alice", "dana"), ("ben", "eli")):
+            self.engine.submit(
+                instance,
+                user_id,
+                open_task(instance, user_id, "Task_Nominate").id,
+                {"candidateId": candidate_id, "reason": "Suitable"},
+            )
+        for user_id in ("alice", "ben"):
+            self.engine.submit(
+                instance,
+                user_id,
+                open_task(instance, user_id, "Task_ChangeNominations").id,
+                {"decision": "keep"},
+            )
+        tie = open_task(instance, "farah", "Task_ResolveTie")
+        self.engine.submit(
+            instance,
+            "farah",
+            tie.id,
+            {"decision": "select", "candidateId": "dana"},
+        )
+        for user_id in ("alice", "ben"):
+            self.engine.submit(
+                instance,
+                user_id,
+                open_task(instance, user_id, "Task_ObjectionRound").id,
+                {"decision": "noObjection"},
+            )
+
+        self.assertEqual(instance.status, "completed")
+        self.assertEqual(instance.outcome, "elected")
+        self.assertEqual(instance.data["electedCandidate"], "dana")
+
     def test_valid_objection_excludes_and_forces_changes(self):
         instance = self.create_started()
         self.complete_initial_rounds(instance)
