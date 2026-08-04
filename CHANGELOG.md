@@ -5,6 +5,37 @@
 Nothing has been published from this repository yet. The entries below are
 what a first release would carry.
 
+- Exposed the bundled workflow template catalog through the public facade so
+  S-Cockpit can offer template-aware Flow creation without duplicating IDs.
+- Persisted a Flow selected through a Cockpit link so background polling no
+  longer switches the page back to the previously selected Flow.
+- Flow creators can return an active workflow to participant setup. Responses
+  from the previous run stay immutable but are excluded from the new run.
+- Flow creators can delete their local copy of a shared Flow; invitees can
+  leave it locally. Other participants keep their copies.
+
+- Added a two-client Minimal Consent slice: participant setup, start, proposal,
+  consent/objection input, pending-response state, outcome and process history.
+- Peer-authored `flow_response` nodes are identity-checked, adopted and applied
+  once to the creator-owned runtime. Parallel round responses remain valid
+  after another response advances the runtime hash.
+- Added Core transition explanations and adopt/rollback reactions for process
+  and participant-assignment differences, using the shared S-Initiative UI
+  pattern.
+- Fixed the example configuration's stale `decision` primary application ID.
+- Polling no longer replaces a form while the user is typing or choosing a
+  participant.
+- Replaced raw JSON response entry with a small JSON-Schema form interpreter
+  that renders named fields, choices, required markers and short guidance.
+- Added workflow-level “Go back”: the creator retracts the latest immutable
+  response, the runtime deterministically replays earlier responses, and the
+  appropriate input is reopened. This is intentionally not Core node rollback.
+
+- Updated Integrative Election: one participant row with role badges; parallel
+  nomination, nomination-change and objection rounds; nomination and reason in
+  one response; definition-driven deferred publication; readable status and
+  history; and automatic objection context for the facilitator validity task.
+
 - Renamed from S-decision to **S-Flow**, to be distributed as
   `sovereign-flow`. The application id is now `flow`, routes are served under
   `/api/flow/`, and the Python package is `s_flow`. Node types moved with it —

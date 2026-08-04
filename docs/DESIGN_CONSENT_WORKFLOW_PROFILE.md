@@ -398,13 +398,12 @@ An excluded candidate remains excluded for the complete election instance.
 | ID | Activity | Actor and rule |
 | --- | --- | --- |
 | `presentRole` | Present the role when a description is needed | Facilitator |
-| `nominate` | Select one eligible candidate; abstention is invalid | All participants, parallel, publish on completion |
-| `shareReasons` | State why the nominee is a good fit | All participants, sequential |
-| `changeNominations` | Explicitly keep or change the current nomination | All participants, sequential |
+| `nominate` | Select one eligible candidate and state why; abstention is invalid | All participants, parallel, publish on completion |
+| `changeNominations` | Explicitly keep or change the current nomination | All participants, parallel, publish on completion |
 | `calculateRanking` | Apply `pluralityRanking` | Application |
 | `resolveTie` | Select a tied candidate or repeat nomination change | Facilitator |
 | `proposeCandidate` | Record the selected candidate as the proposal | Application |
-| `objectionRound` | Submit no objection or a reasoned objection | All participants, sequential |
+| `objectionRound` | Submit no objection or a reasoned objection | All participants, parallel, publish on completion |
 | `discussObjection` | Discuss each submitted objection asynchronously | Participants and facilitator |
 | `recordValidity` | Record valid or invalid for every objection | Facilitator |
 | `excludeCandidate` | Permanently exclude the proposed candidate | Application |
@@ -415,27 +414,27 @@ An excluded candidate remains excluded for the complete election instance.
 1. Start the election and freeze the participant list.
 2. Present the role if required.
 3. Open the nomination round.
-4. Wait until every participant has nominated exactly one eligible candidate.
+4. Wait until every participant has nominated exactly one eligible candidate
+   and given a reason.
 5. Publish all nominations.
-6. Complete the sequential sharing round.
-7. Complete a nomination-change round. Every participant explicitly records
+6. Complete a nomination-change round. Every participant explicitly records
    `keep` or `change`; a change requires a candidate and explanation.
-8. Calculate the plurality ranking.
-9. If there is one top-ranked candidate, propose that candidate.
-10. If there is a top tie, the facilitator either:
+7. Calculate the plurality ranking.
+8. If there is one top-ranked candidate, propose that candidate.
+9. If there is a top tie, the facilitator either:
     - proposes one of the tied candidates; or
     - starts another nomination-change round.
-11. Ask every participant for `noObjection` or `objection`.
-12. Each submitted objection receives an asynchronous discussion thread.
-13. The facilitator closes each discussion and records the validity of its
+10. Ask every participant for `noObjection` or `objection`.
+11. Each submitted objection receives an asynchronous discussion thread.
+12. The facilitator closes each discussion and records the validity of its
     objection. The application does not determine validity.
-14. If no objection is valid, end with `elected`.
-15. If at least one objection is valid:
+13. If no objection is valid, end with `elected`.
+14. If at least one objection is valid:
     - exclude the proposed candidate once;
     - retain all objection and validity records;
     - in closed mode, end with `void` if no candidate remains;
     - otherwise start a new nomination-change round.
-16. In open mode, the facilitator may declare the election void at the
+15. In open mode, the facilitator may declare the election void at the
     candidate-availability checkpoint.
 
 ### 11.4 Response shapes
@@ -444,15 +443,8 @@ Initial nomination:
 
 ```json
 {
-  "candidateId": "person-identifier"
-}
-```
-
-Sharing:
-
-```json
-{
-  "statement": "Why this person is a good fit"
+  "candidateId": "person-identifier",
+  "reason": "Why this person is a good fit"
 }
 ```
 

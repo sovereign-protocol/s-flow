@@ -12,6 +12,7 @@
           version="0.2"
           templateId="integrativeDecisionMaking"
           templateVersion="0.2.0"
+          description="Participants clarify, react to and test a proposal, then raise and integrate reasoned objections before final consent."
           asynchronous="true"
           trustedSpace="true">
         <cwp:role id="facilitator" kind="facilitator" min="1" max="1"/>

@@ -212,19 +212,10 @@ class ElectionRuntimeTests(unittest.TestCase):
                 instance,
                 user_id,
                 task.id,
-                {"candidateId": candidate_id},
-            )
-
-        ben_projection = self.engine.personal_projection(instance, "ben")
-        self.assertEqual(ben_projection.waiting_reason["type"], "priorTurn")
-
-        for user_id in ("alice", "ben", "cara"):
-            task = open_task(instance, user_id, "Task_ShareReasons")
-            self.engine.submit(
-                instance,
-                user_id,
-                task.id,
-                {"statement": f"{nominations[user_id]} is suitable"},
+                {
+                    "candidateId": candidate_id,
+                    "reason": f"{candidate_id} is suitable",
+                },
             )
 
         for user_id in ("alice", "ben", "cara"):
@@ -237,6 +228,42 @@ class ElectionRuntimeTests(unittest.TestCase):
             )
 
         self.assertEqual(instance.data["proposedCandidate"], "eli")
+
+    def test_nomination_round_is_parallel_and_published_only_when_complete(self):
+        instance = self.create_started()
+        tasks = {
+            user_id: open_task(instance, user_id, "Task_Nominate")
+            for user_id in ("alice", "ben", "cara")
+        }
+        self.assertTrue(all(task.status == "open" for task in tasks.values()))
+
+        self.engine.submit(
+            instance,
+            "alice",
+            tasks["alice"].id,
+            {"candidateId": "dana", "reason": "Relevant experience"},
+        )
+        alice_projection = self.engine.personal_projection(instance, "alice")
+        self.assertEqual(alice_projection.waiting_reason["type"], "actorTask")
+        self.assertEqual(
+            set(alice_projection.waiting_reason["dependencies"]),
+            {"ben", "cara"},
+        )
+        self.assertNotIn("response", instance.events[-1].data)
+        self.assertFalse(instance.data.get("publishedRounds"))
+
+        for user_id, candidate_id in (("ben", "eli"), ("cara", "eli")):
+            self.engine.submit(
+                instance,
+                user_id,
+                tasks[user_id].id,
+                {"candidateId": candidate_id, "reason": "Strong fit"},
+            )
+
+        published = instance.data["publishedRounds"][-1]
+        self.assertEqual(published["publication"], "onRoundComplete")
+        self.assertEqual(len(published["responses"]), 3)
+        self.assertTrue(any(event.type == "roundPublished" for event in instance.events))
 
     def submit_objection_round(self, instance, responses):
         for user_id, response in responses:
@@ -282,6 +309,14 @@ class ElectionRuntimeTests(unittest.TestCase):
         item = instance.current_work_item()
         self.assertIsNotNone(item)
         validity_task = open_task(instance, "farah", "Task_RecordValidity")
+        self.assertEqual(
+            validity_task.metadata["responseDefaults"],
+            {"objectionId": item.id},
+        )
+        self.assertEqual(
+            validity_task.metadata["context"]["payload"]["statement"],
+            "Material risk",
+        )
         self.engine.submit(
             instance,
             "farah",

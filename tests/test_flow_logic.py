@@ -9,7 +9,11 @@ from s_flow.logic import (
     PROCESS_TYPE,
     FlowLogic,
 )
-from s_flow.workflow_adapter import RESPONSE_TYPE, RUNTIME_STATE_TYPE
+from s_flow.workflow_adapter import (
+    RESPONSE_TYPE,
+    RETRACTED_RESPONSE_IDS,
+    RUNTIME_STATE_TYPE,
+)
 
 
 class FlowLogicTests(unittest.TestCase):
@@ -26,6 +30,19 @@ class FlowLogicTests(unittest.TestCase):
         self.assertEqual(registration.root_types, frozenset({PROCESS_TYPE}))
         self.assertTrue(registration.assignment_scoped)
         self.assertTrue(registration.mount_invitation)
+
+    def test_template_catalog_uses_bundled_definitions(self):
+        templates = self.logic.templates()
+        self.assertEqual(
+            [item["id"] for item in templates],
+            [
+                "integrative-election",
+                "integrative-decision-making",
+                "minimal-consent",
+            ],
+        )
+        self.assertTrue(all(item["name"] for item in templates))
+        self.assertTrue(all(item["description"] for item in templates))
 
     def test_create_process_is_a_core_topic_with_facilitator_assignment(self):
         created = self.logic.create_process(
@@ -75,6 +92,18 @@ class FlowLogicTests(unittest.TestCase):
         self.assertEqual(rejected.status, "error")
         self.assertIn("changed while you were editing", rejected.reason)
 
+    def test_selected_process_survives_later_refreshes(self):
+        first_uuid = self.logic.create_process("First").value
+        second_uuid = self.logic.create_process("Second").value
+
+        self.assertEqual(self.logic.select_process(first_uuid).status, "ok")
+
+        self.assertEqual(
+            self.logic.process_payload()["process"]["uuid"],
+            first_uuid,
+        )
+        self.assertNotEqual(first_uuid, second_uuid)
+
     def test_invited_process_mounts_as_a_local_topic(self):
         host = Session("host")
         host_logic = FlowLogic(host)
@@ -97,17 +126,80 @@ class FlowLogicTests(unittest.TestCase):
         self.assertEqual(deleted.status, "ok")
         self.assertEqual(self.logic.processes(), [])
 
+    def test_invitee_can_leave_but_cannot_delete_shared_process(self):
+        host = Session("host")
+        host_logic = FlowLogic(host)
+        process_uuid = host_logic.create_process("Shared flow").value
+        subtree = ProtocolNode.from_dict(
+            host.protocol.index[process_uuid].to_dict(),
+        )
+        self.assertEqual(
+            self.logic.accept_process_invitation(subtree).status, "ok",
+        )
+
+        rejected = self.logic.delete_process(process_uuid)
+        left = self.logic.leave_process(process_uuid)
+
+        self.assertEqual(rejected.status, "error")
+        self.assertIn("creator", rejected.reason)
+        self.assertEqual(left.status, "ok")
+        self.assertEqual(self.logic.processes(), [])
+        self.assertNotIn(process_uuid, self.session.active_topic_ids())
+
+    def test_return_to_setup_reopens_participants_and_starts_a_new_run(self):
+        process_uuid = self.logic.create_process(
+            "Consent policy", "minimal-consent", "0.2.0",
+        ).value
+        self.assertEqual(self.logic.start_process(process_uuid).status, "ok")
+        workflow = self.logic.process_payload(process_uuid)["workflow"]
+        submitted = self.logic.submit_task(
+            process_uuid,
+            workflow["personal"]["tasks"][0]["id"],
+            {"proposal": "Initial proposal"},
+            workflow["runtime_content_hash"],
+        )
+        self.assertEqual(submitted.status, "ok")
+
+        returned = self.logic.return_to_setup(process_uuid)
+        setup = self.logic.process_payload(process_uuid)
+
+        self.assertEqual(returned.status, "ok")
+        self.assertEqual(setup["process"]["data"]["lifecycle"], "setup")
+        self.assertEqual(setup["workflow"]["personal"]["tasks"], [])
+        self.assertEqual(
+            setup["workflow"]["position"]["current_stages"][0]["id"],
+            "setup",
+        )
+        self.assertEqual(
+            setup["process"]["data"]["workflow_generation"], 1,
+        )
+        self.assertEqual(self.logic.start_process(process_uuid).status, "ok")
+        restarted = self.logic.process_payload(process_uuid)["workflow"]
+        self.assertEqual(
+            restarted["personal"]["tasks"][0]["nodeId"],
+            "Task_CreateProposal",
+        )
+
     def test_start_and_submit_are_restored_from_core_nodes(self):
         process_uuid = self.logic.create_process("Elect secretary").value
 
         started = self.logic.start_process(process_uuid)
         payload = self.logic.process_payload(process_uuid)
         workflow = payload["workflow"]
+        nomination_round = next(
+            item for item in workflow["definition"]["rounds"]
+            if item["node_id"] == "Task_Nominate"
+        )
+        self.assertEqual(nomination_round["ordering"], "parallel")
+        self.assertEqual(nomination_round["publication"], "onRoundComplete")
         task = workflow["personal"]["tasks"][0]
         submitted = self.logic.submit_task(
             process_uuid,
             task["id"],
-            {"candidateId": self.session.identity.uuid},
+            {
+                "candidateId": self.session.identity.uuid,
+                "reason": "Relevant experience",
+            },
             workflow["runtime_content_hash"],
         )
 
@@ -134,7 +226,7 @@ class FlowLogicTests(unittest.TestCase):
         self.assertEqual(restored["position"]["last_completed_stage"]["id"], "Task_Nominate")
         self.assertEqual(
             restored["personal"]["tasks"][0]["nodeId"],
-            "Task_ShareReasons",
+            "Task_ChangeNominations",
         )
 
     def test_runtime_hash_rejects_a_stale_response(self):
@@ -146,7 +238,10 @@ class FlowLogicTests(unittest.TestCase):
         self.logic.submit_task(
             process_uuid,
             task["id"],
-            {"candidateId": self.session.identity.uuid},
+            {
+                "candidateId": self.session.identity.uuid,
+                "reason": "Relevant experience",
+            },
             stale_hash,
         )
         next_task = self.logic.process_payload(process_uuid)[
@@ -156,12 +251,49 @@ class FlowLogicTests(unittest.TestCase):
         rejected = self.logic.submit_task(
             process_uuid,
             next_task["id"],
-            {"statement": "A good fit."},
+            {"decision": "keep"},
             stale_hash,
         )
 
         self.assertEqual(rejected.status, "error")
         self.assertIn("advanced while you were responding", rejected.reason)
+
+    def test_go_back_retracts_response_and_reopens_same_input(self):
+        process_uuid = self.logic.create_process(
+            "Consent policy", "minimal-consent", "0.2.0",
+        ).value
+        self.assertEqual(self.logic.start_process(process_uuid).status, "ok")
+        workflow = self.logic.process_payload(process_uuid)["workflow"]
+        task = workflow["personal"]["tasks"][0]
+        submitted = self.logic.submit_task(
+            process_uuid,
+            task["id"],
+            {"proposal": "Policy A"},
+            workflow["runtime_content_hash"],
+        )
+        self.assertEqual(submitted.status, "ok")
+
+        returned = self.logic.go_back(process_uuid)
+
+        self.assertEqual(returned.status, "ok")
+        reopened = self.logic.process_payload(process_uuid)["workflow"]
+        self.assertEqual(
+            reopened["personal"]["tasks"][0]["nodeId"],
+            "Task_CreateProposal",
+        )
+        self.assertFalse(reopened["can_go_back"])
+        process = self.session.protocol.index[process_uuid]
+        instance = self.logic.workflow.load(process)
+        self.assertIn(submitted.value, instance.data[RETRACTED_RESPONSE_IDS])
+        self.assertEqual(
+            self.logic.submit_task(
+                process_uuid,
+                reopened["personal"]["tasks"][0]["id"],
+                {"proposal": "Policy A, corrected"},
+                reopened["runtime_content_hash"],
+            ).status,
+            "ok",
+        )
 
 
 if __name__ == "__main__":

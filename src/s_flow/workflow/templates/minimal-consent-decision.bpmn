@@ -12,6 +12,7 @@
           version="0.2"
           templateId="minimalConsent"
           templateVersion="0.2.0"
+          description="The proposer records a proposal. Every required participant consents to that revision or states an objection. An objection returns the proposal for amendment or withdrawal."
           asynchronous="true"
           trustedSpace="true">
         <cwp:role id="proposer" kind="proposer" min="1" max="1"/>

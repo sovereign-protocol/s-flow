@@ -17,6 +17,9 @@ class FlowFacade:
     def processes(self) -> list[ProtocolNode]:
         return self._logic.processes()
 
+    def templates(self) -> list[dict[str, str]]:
+        return self._logic.templates()
+
     def process_summary(self, process: ProtocolNode) -> dict:
         return self._logic.process_summary(process)
 
@@ -43,8 +46,25 @@ class FlowFacade:
     def delete_process(self, process_uuid: str):
         return self._logic.delete_process(process_uuid)
 
+    def leave_process(self, process_uuid: str):
+        return self._logic.leave_process(process_uuid)
+
+    def return_to_setup(self, process_uuid: str):
+        return self._logic.return_to_setup(process_uuid)
+
     def start_process(self, process_uuid: str):
         return self._logic.start_process(process_uuid)
+
+    def set_assignment(
+        self, process_uuid: str, identity_uuid: str, role: str,
+        required: bool | None = None,
+    ):
+        return self._logic.set_assignment(
+            process_uuid, identity_uuid, role, required,
+        )
+
+    def delete_assignment(self, process_uuid: str, assignment_uuid: str):
+        return self._logic.delete_assignment(process_uuid, assignment_uuid)
 
     def submit_task(
         self,
@@ -59,6 +79,9 @@ class FlowFacade:
             response,
             expected_runtime_content_hash,
         )
+
+    def go_back(self, process_uuid: str):
+        return self._logic.go_back(process_uuid)
 
     def create_agenda_item(
         self, process_uuid: str, text: str, priority: str | None = None,
@@ -75,3 +98,19 @@ class FlowFacade:
 
     def move_agenda_item(self, item_uuid: str, index: int):
         return self._logic.move_agenda_item(item_uuid, index)
+
+    def accept_peer_node(
+        self, source_addr: str, node_uuid: str,
+        adopt_absence: bool = False,
+    ):
+        return self._logic.accept_peer_node(
+            source_addr, node_uuid, adopt_absence,
+        )
+
+    def rollback_peer_node(
+        self, source_addr: str, node_uuid: str,
+        rollback_absence: bool = False,
+    ):
+        return self._logic.rollback_peer_node(
+            source_addr, node_uuid, rollback_absence,
+        )

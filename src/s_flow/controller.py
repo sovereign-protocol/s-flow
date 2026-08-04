@@ -47,6 +47,13 @@ def build_routes(logic, runtime) -> list[Route]:
             lambda: logic.delete_process(data["process_uuid"]),
         )
 
+    async def api_leave(request: Request):
+        data = await request.json()
+        return await _mutation(
+            runtime, data,
+            lambda: logic.leave_process(data["process_uuid"]),
+        )
+
     async def api_assign(request: Request):
         data = await request.json()
         return await _mutation(runtime, data, lambda: logic.set_assignment(
@@ -55,6 +62,15 @@ def build_routes(logic, runtime) -> list[Route]:
             data["role"],
             data.get("required"),
         ))
+
+    async def api_assignment_delete(request: Request):
+        data = await request.json()
+        return await _mutation(
+            runtime, data,
+            lambda: logic.delete_assignment(
+                data["process_uuid"], data["assignment_uuid"],
+            ),
+        )
 
     async def api_start(request: Request):
         data = await request.json()
@@ -83,12 +99,42 @@ def build_routes(logic, runtime) -> list[Route]:
             data.get("expected_runtime_content_hash"),
         ))
 
+    async def api_go_back(request: Request):
+        data = await request.json()
+        return await _mutation(
+            runtime, data,
+            lambda: logic.go_back(data["process_uuid"]),
+        )
+
+    async def api_return_to_setup(request: Request):
+        data = await request.json()
+        return await _mutation(
+            runtime, data,
+            lambda: logic.return_to_setup(data["process_uuid"]),
+        )
+
     async def api_acknowledge(request: Request):
         data = await request.json()
         return await _mutation(
             runtime, data,
             lambda: logic.acknowledge_information(data["process_uuid"]),
         )
+
+    async def api_adopt(request: Request):
+        data = await request.json()
+        return await _mutation(runtime, data, lambda: logic.accept_peer_node(
+            data["source_addr"],
+            data["node_uuid"],
+            bool(data.get("adopt_absence")),
+        ))
+
+    async def api_rollback(request: Request):
+        data = await request.json()
+        return await _mutation(runtime, data, lambda: logic.rollback_peer_node(
+            data["source_addr"],
+            data["node_uuid"],
+            bool(data.get("rollback_absence")),
+        ))
 
     async def api_agenda_create(request: Request):
         data = await request.json()
@@ -127,7 +173,13 @@ def build_routes(logic, runtime) -> list[Route]:
         Route("/api/flow/processes/select", api_select, methods=["POST"]),
         Route("/api/flow/processes/rename", api_rename, methods=["POST"]),
         Route("/api/flow/processes/delete", api_delete, methods=["POST"]),
+        Route("/api/flow/processes/leave", api_leave, methods=["POST"]),
         Route("/api/flow/assignments/set", api_assign, methods=["POST"]),
+        Route(
+            "/api/flow/assignments/delete",
+            api_assignment_delete,
+            methods=["POST"],
+        ),
         Route("/api/flow/processes/start", api_start, methods=["POST"]),
         Route(
             "/api/flow/processes/configure_election",
@@ -135,11 +187,19 @@ def build_routes(logic, runtime) -> list[Route]:
             methods=["POST"],
         ),
         Route("/api/flow/tasks/submit", api_submit, methods=["POST"]),
+        Route("/api/flow/processes/go_back", api_go_back, methods=["POST"]),
+        Route(
+            "/api/flow/processes/return_to_setup",
+            api_return_to_setup,
+            methods=["POST"],
+        ),
         Route(
             "/api/flow/information/acknowledge",
             api_acknowledge,
             methods=["POST"],
         ),
+        Route("/api/flow/adopt", api_adopt, methods=["POST"]),
+        Route("/api/flow/rollback", api_rollback, methods=["POST"]),
         Route("/api/flow/agenda/create", api_agenda_create, methods=["POST"]),
         Route("/api/flow/agenda/delete", api_agenda_delete, methods=["POST"]),
         Route(

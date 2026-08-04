@@ -6,6 +6,8 @@ import copy
 
 from sovereign import ApplicationRegistration, ProtocolNode, Session, SessionResult
 
+from .workflow import bundled_workflow_templates
+
 from .workflow_adapter import (
     RESPONSE_TYPE,
     RUNTIME_STATE_TYPE,
@@ -25,6 +27,7 @@ ROLE_TYPES = frozenset({
     "optionalParticipant",
     "observer",
 })
+DISPLAYED_TRANSITION_TYPES = frozenset({PROCESS_TYPE, ASSIGNMENT_TYPE})
 
 
 class FlowLogic:
@@ -46,6 +49,7 @@ class FlowLogic:
             self.accept_process_invitation,
             assignment_scoped=True,
             mount_invitation=True,
+            on_peer_update=self.on_peer_update,
         )
 
     def processes(self) -> list[ProtocolNode]:
@@ -62,6 +66,10 @@ class FlowLogic:
                 node.created_at,
             ),
         )
+
+    @staticmethod
+    def templates() -> list[dict[str, str]]:
+        return bundled_workflow_templates()
 
     def create_process(
         self,
@@ -92,6 +100,7 @@ class FlowLogic:
                 "created_by_identity_uuid": self.session.identity.uuid,
                 "role_presentation_required": False,
                 "eligible_candidates": [self.session.identity.uuid],
+                "workflow_generation": 0,
             },
             {},
         )
@@ -177,6 +186,23 @@ class FlowLogic:
         process = self._node(process_uuid, PROCESS_TYPE)
         if not process:
             return SessionResult("error", reason="process not found")
+        if not self._is_process_owner(process):
+            return SessionResult(
+                "error", reason="only the process creator can delete it",
+            )
+        return self._remove_local_process(process)
+
+    def leave_process(self, process_uuid: str) -> SessionResult:
+        process = self._node(process_uuid, PROCESS_TYPE)
+        if not process:
+            return SessionResult("error", reason="process not found")
+        if self._is_process_owner(process):
+            return SessionResult(
+                "error", reason="the process creator must delete it instead",
+            )
+        return self._remove_local_process(process)
+
+    def _remove_local_process(self, process: ProtocolNode) -> SessionResult:
         release = self.session.end_topic_sharing(process.uuid)
         deleted = self.session.delete(process.uuid)
         if deleted.status != "ok":
@@ -187,6 +213,41 @@ class FlowLogic:
         ]
         self._remember_process(remaining[0].uuid if remaining else "")
         return deleted
+
+    def return_to_setup(self, process_uuid: str) -> SessionResult:
+        process = self._node(process_uuid, PROCESS_TYPE)
+        if not process:
+            return SessionResult("error", reason="process not found")
+        if not self._is_process_owner(process):
+            return SessionResult(
+                "error", reason="only the process creator can return to setup",
+            )
+        state = self.workflow.state_node(process)
+        if not state:
+            return SessionResult("error", reason="process is already in setup")
+
+        removed = self.session.delete(state.uuid)
+        if removed.status != "ok":
+            return removed
+        generation = int(process.data.get("workflow_generation", 0) or 0) + 1
+        updated = self.session.modify(
+            process.uuid,
+            {
+                **process.data,
+                "lifecycle": "setup",
+                "last_completed": "",
+                "current_stage": "Configure participants",
+                "workflow_generation": generation,
+            },
+            process.weights,
+        )
+        if updated.status != "ok":
+            return updated
+        return SessionResult(
+            "ok",
+            value=process.uuid,
+            effects=[*removed.effects, *updated.effects],
+        )
 
     def assignments(self, process: ProtocolNode) -> list[ProtocolNode]:
         return sorted(
@@ -210,6 +271,10 @@ class FlowLogic:
         process = self._node(process_uuid, PROCESS_TYPE)
         if not process:
             return SessionResult("error", reason="process not found")
+        if not self._is_process_owner(process):
+            return SessionResult(
+                "error", reason="only the process creator can assign participants",
+            )
         if self.workflow.state_node(process):
             return SessionResult(
                 "error",
@@ -249,10 +314,31 @@ class FlowLogic:
             return self.session.modify(existing.uuid, data, existing.weights)
         return self.session.create_child(process.uuid, data, {})
 
+    def delete_assignment(
+        self, process_uuid: str, assignment_uuid: str,
+    ) -> SessionResult:
+        process = self._node(process_uuid, PROCESS_TYPE)
+        assignment = self._node(assignment_uuid, ASSIGNMENT_TYPE)
+        if not process or not assignment or assignment.parent_uuid != process.uuid:
+            return SessionResult("error", reason="assignment not found")
+        if not self._is_process_owner(process):
+            return SessionResult(
+                "error", reason="only the process creator can assign participants",
+            )
+        if self.workflow.state_node(process):
+            return SessionResult(
+                "error", reason="assign participants before starting the process",
+            )
+        return self.session.delete(assignment.uuid)
+
     def start_process(self, process_uuid: str) -> SessionResult:
         process = self._node(process_uuid, PROCESS_TYPE)
         if not process:
             return SessionResult("error", reason="process not found")
+        if not self._is_process_owner(process):
+            return SessionResult(
+                "error", reason="only the process creator can start it",
+            )
         return self.workflow.start(process)
 
     def configure_election(
@@ -264,6 +350,10 @@ class FlowLogic:
         process = self._node(process_uuid, PROCESS_TYPE)
         if not process:
             return SessionResult("error", reason="process not found")
+        if not self._is_process_owner(process):
+            return SessionResult(
+                "error", reason="only the process creator can configure it",
+            )
         if self.workflow.state_node(process):
             return SessionResult(
                 "error", reason="configure candidates before starting the process",
@@ -306,6 +396,12 @@ class FlowLogic:
             response,
             expected_runtime_content_hash,
         )
+
+    def go_back(self, process_uuid: str) -> SessionResult:
+        process = self._node(process_uuid, PROCESS_TYPE)
+        if not process:
+            return SessionResult("error", reason="process not found")
+        return self.workflow.retract_last_response(process)
 
     def acknowledge_information(self, process_uuid: str) -> SessionResult:
         process = self._node(process_uuid, PROCESS_TYPE)
@@ -360,6 +456,7 @@ class FlowLogic:
             ]
             if selected else []
         )
+        events = self.transition_events(selected) if selected else []
         return {
             "process": selected.to_dict() if selected else None,
             "processes": [self.process_summary(item) for item in processes],
@@ -371,6 +468,16 @@ class FlowLogic:
             ],
             "identity_uuid": self.session.identity.uuid,
             "network": network or {},
+            "peers": {
+                addr: tree.to_dict()
+                for addr, tree in sorted(
+                    self.session.peer_perspectives_for_topic(
+                        selected.uuid if selected else None,
+                    ).items(),
+                )
+            },
+            "transition_events": events,
+            "transition_by_node": self.transition_by_node(events),
             "workflow": (
                 self.workflow.projection(
                     selected, self.session.identity.uuid,
@@ -430,6 +537,8 @@ class FlowLogic:
             "assignment_count": len(assignments),
             "agenda_count": len(self.session.agenda_items(process.uuid)),
             "content_hash": process.content_hash,
+            "can_delete": self._is_process_owner(process),
+            "can_leave": not self._is_process_owner(process),
         }
 
     def collaboration_context(
@@ -438,13 +547,14 @@ class FlowLogic:
         process = self._node(process_uuid, PROCESS_TYPE)
         if not process:
             return {}
+        events = self.transition_events(process)
         return {
             "agenda_items": [
                 item.to_dict()
                 for item in self.session.agenda_items(process.uuid)
             ],
-            "transition_events": [],
-            "transition_by_node": {},
+            "transition_events": events,
+            "transition_by_node": self.transition_by_node(events),
             "identity_uuid": self.session.identity.uuid,
             "known_identities": self.session.known_identities(),
             "workflow": self.workflow.projection(
@@ -452,6 +562,202 @@ class FlowLogic:
             ),
             "network": network or {},
         }
+
+    def on_peer_update(self) -> SessionResult:
+        changed = False
+        effects = []
+        for process in self.processes():
+            if self.workflow.is_runtime_owner(process):
+                for addr in self.session.peer_addresses(process.uuid):
+                    if not self.session.peer_discusses_node(addr, process.uuid):
+                        continue
+                    for event in self.session.analyze_peer_transitions(
+                        addr, process.uuid,
+                    ):
+                        if event.get("type") != "local_missing_node":
+                            continue
+                        peer_node = self.session.get_cached_peer_subtree(
+                            addr, str(event.get("node_uuid") or ""),
+                        )
+                        if not peer_node or peer_node.data.get("type") != RESPONSE_TYPE:
+                            continue
+                        result = self.workflow.ingest_peer_response(
+                            process, addr, peer_node,
+                        )
+                        if result.status != "ok":
+                            continue
+                        changed = bool(result.value) or changed
+                        effects.extend(result.effects)
+                continue
+
+            owner_id = str(process.data.get("created_by_identity_uuid") or "")
+            owner_addr = next(
+                (
+                    addr for addr in self.session.peer_addresses(process.uuid)
+                    if (
+                        (identity := self.session.peer_identity(addr))
+                        and identity.uuid == owner_id
+                    )
+                ),
+                None,
+            )
+            if not owner_addr:
+                continue
+            owner_key = self.session.peer_identity_key_for_address(owner_addr)
+
+            def eligible(node: ProtocolNode, _event_type: str) -> bool:
+                node_type = node.data.get("type")
+                if node_type == RESPONSE_TYPE:
+                    return True
+                return (
+                    node_type in {PROCESS_TYPE, ASSIGNMENT_TYPE, RUNTIME_STATE_TYPE}
+                    and bool(owner_key)
+                    and node.revision_origin == owner_key
+                )
+
+            changed = self.session.reconcile_peer_changes(
+                owner_addr,
+                process.uuid,
+                node_is_eligible=eligible,
+            ) or changed
+        return SessionResult("ok", value=changed, effects=effects)
+
+    def transition_events(self, process: ProtocolNode) -> list[dict]:
+        events = []
+        for addr in self.session.peer_addresses(process.uuid):
+            if not self.session.peer_discusses_node(addr, process.uuid):
+                continue
+            for event in self.session.analyze_peer_transitions(addr, process.uuid):
+                node_uuid = str(event.get("node_uuid") or "")
+                local = self.session.protocol.index.get(node_uuid)
+                peer = self.session.get_cached_peer_subtree(addr, node_uuid)
+                node = local or peer
+                if not node or node.data.get("type") not in DISPLAYED_TRANSITION_TYPES:
+                    continue
+                if event.get("type") == "in_agreement":
+                    continue
+                event = dict(event)
+                event["changes"] = self.describe_peer_changes(
+                    addr,
+                    node_uuid,
+                    authored_locally=event.get("type") in {
+                        "local_made_changes", "peer_missing_node",
+                    },
+                )
+                events.append(event)
+        return events
+
+    def transition_by_node(self, events: list[dict]) -> dict:
+        grouped: dict[str, dict] = {}
+        for event in events:
+            node_uuid = str(event.get("node_uuid") or "")
+            if not node_uuid:
+                continue
+            info = {
+                key: event.get(key)
+                for key in (
+                    "type", "stage", "peer_addr", "origin_identity",
+                    "local_revision_origin", "peer_revision_origin",
+                    "local_state_hash", "peer_state_hash", "local_base_hash",
+                    "peer_base_hash", "local_revision", "peer_revision",
+                    "peer_observed_local_revision",
+                )
+            }
+            info["changes"] = list(event.get("changes") or [])
+            info["reaction"] = self.session.reaction_for_event(event)
+            info["priority"] = self.session.transition_rank(event)
+            current = grouped.get(node_uuid)
+            if current is None:
+                grouped[node_uuid] = {**info, "events": [dict(info)]}
+                continue
+            current.setdefault("events", []).append(dict(info))
+            if self.session.transition_rank(event) > tuple(
+                current.get("priority") or (0, 0)
+            ):
+                events_for_node = current["events"]
+                current.update(info)
+                current["events"] = events_for_node
+        return grouped
+
+    def describe_peer_changes(
+        self, peer_addr: str, node_uuid: str, *, authored_locally: bool,
+    ) -> list[dict]:
+        local = self.session.protocol.index.get(node_uuid)
+        peer = self.session.get_cached_peer_subtree(peer_addr, node_uuid)
+        authored = local if authored_locally else peer
+        counter = peer if authored_locally else local
+        node = authored or counter
+        if not node:
+            return []
+        label = (
+            "Process" if node.data.get("type") == PROCESS_TYPE
+            else "Participant assignment"
+        )
+        if authored is None or authored.deleted:
+            return [{
+                "node_label": label,
+                "authored_act": "deleted",
+                "authored_noun": "deletion",
+            }]
+        if counter is None or counter.deleted:
+            return [{
+                "node_label": label,
+                "authored_act": "created",
+                "authored_noun": "creation",
+            }]
+        changes = []
+        if (
+            node.data.get("type") != PROCESS_TYPE
+            and authored.parent_uuid != counter.parent_uuid
+        ):
+            changes.append({
+                "node_label": label,
+                "authored_act": "moved",
+                "authored_noun": "move",
+            })
+        ignored = {"type", "last_completed", "current_stage", "lifecycle", "outcome"}
+        fields = sorted(
+            (set(authored.data) | set(counter.data)) - ignored
+        )
+        changed_fields = [
+            field for field in fields
+            if authored.data.get(field) != counter.data.get(field)
+        ]
+        if changed_fields:
+            names = {
+                "title": "title",
+                "identity_uuid": "participant",
+                "role": "role",
+                "required": "requirement",
+            }
+            changes.append({
+                "node_label": label,
+                "authored_act": "modified",
+                "authored_noun": "modification",
+                "authored_detail": ", ".join(
+                    names.get(field, field.replace("_", " "))
+                    for field in changed_fields
+                ),
+            })
+        return changes
+
+    def accept_peer_node(
+        self, source_addr: str, node_uuid: str, adopt_absence: bool = False,
+    ) -> SessionResult:
+        if not self._owns_reactable_node(node_uuid, source_addr, adopt_absence):
+            return SessionResult("error", reason="node is not part of S-Flow")
+        return self.session.accept_peer_node(
+            source_addr, node_uuid, adopt_absence,
+        )
+
+    def rollback_peer_node(
+        self, source_addr: str, node_uuid: str, rollback_absence: bool = False,
+    ) -> SessionResult:
+        if not self._owns_reactable_node(node_uuid, source_addr, False):
+            return SessionResult("error", reason="node is not part of S-Flow")
+        return self.session.rollback_peer_node(
+            source_addr, node_uuid, rollback_absence,
+        )
 
     def owns_node(self, node_uuid: str) -> bool:
         node = self.session.protocol.index.get(node_uuid)
@@ -464,6 +770,30 @@ class FlowLogic:
         }:
             return False
         return self._local_process_topic(node_uuid) is not None
+
+    def _owns_reactable_node(
+        self, node_uuid: str, peer_addr: str, allow_absence: bool,
+    ) -> bool:
+        local = self.session.protocol.index.get(node_uuid)
+        if local and local.data.get("type") in DISPLAYED_TRANSITION_TYPES:
+            return self._local_process_topic(node_uuid) is not None
+        if allow_absence:
+            return False
+        peer = self.session.get_cached_peer_subtree(peer_addr, node_uuid)
+        if not peer or peer.data.get("type") not in DISPLAYED_TRANSITION_TYPES:
+            return False
+        return any(
+            self._node(topic_uuid, PROCESS_TYPE)
+            for topic_uuid in self.session.peer_topics_for_node(
+                peer_addr, node_uuid,
+            )
+        )
+
+    def _is_process_owner(self, process: ProtocolNode) -> bool:
+        return (
+            process.data.get("created_by_identity_uuid")
+            == self.session.identity.uuid
+        )
 
     def _selected_process(
         self, requested_uuid: str | None, processes: list[ProtocolNode],

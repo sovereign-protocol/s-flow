@@ -5,7 +5,7 @@ Status: application scaffold and first Core-backed topic implemented
 Application identifiers:
 
 - display name: `S-Flow`;
-- application ID: `decision`;
+- application ID: `flow`;
 - Python package: `s_flow`.
 
 ## Ownership
@@ -24,16 +24,13 @@ Application identifiers:
 
 ## Topic model
 
-Each process instance is one assignment-scoped shared topic. Provisional node
-types, independent of the eventual product name:
+Each process instance is one assignment-scoped shared topic. Implemented node
+types:
 
-- `workflow_process`: title, definition identifier/version and lifecycle;
-- `workflow_assignment`: identity UUID, role and effective round;
-- `workflow_round`: immutable participant set and artifact reference;
-- `workflow_response`: participant-authored input for one round;
-- `workflow_artifact_revision`: immutable proposal or candidate-list revision;
-- `workflow_facilitator_decision`: recorded tie, objection-validity or
-  transition decision;
+- `flow_process`: title, definition identifier/version and lifecycle;
+- `flow_assignment`: identity UUID, role and effective round;
+- `flow_runtime_state`: creator-owned serialized interpreter state;
+- `flow_response`: immutable participant-authored workflow command;
 - Core `agenda_item`: asynchronous agenda entry attached to the topic.
 
 The app registers the root through `ApplicationRegistration`, mounts accepted
@@ -48,8 +45,15 @@ There are three separate cases:
 2. Editing an existing node supplies its captured `content_hash`; a mismatch
    rejects the stale form.
 3. Different people submit their own response nodes. Core preserves their peer
-   perspectives; the application derives round completion and facilitator
-   work from those perspectives.
+   perspectives. The process creator verifies peer identity, adopts each
+   immutable response node and applies it once to the creator-owned runtime.
+   Applicability is the still-open task, not equality with the whole-runtime
+   hash, so parallel responses from the same round remain valid.
+
+Going back is an application-level correction, not a Core reaction. Response
+nodes remain append-only. The creator records the latest applied response as
+retracted and rebuilds the runtime by replaying the remaining response UUIDs in
+their original application order. A replacement response creates a new node.
 
 The third case is not a normal database conflict. Automatically adopting every
 peer subtree would erase the sovereign authorship model.
@@ -97,8 +101,9 @@ tile-provider contract rather than changing Cockpit for every future app.
    registration.
 2. **Local perspective done:** replace the in-memory instance store with a
    Core-node adapter.
-3. **Local projections done; peer reconciliation pending:** implement process
-   and personal projections over local plus peer state.
+3. **Done for Minimal Consent:** process and personal projections over local
+   plus peer-authored response state.
 4. **Initial slice done:** Core-backed agendas and participant assignment.
 5. **Done:** expose facade API version 1 and add the Cockpit tile adapter.
-6. Exercise two clients over the local relay and SFTP relay.
+6. **Local relay done for Minimal Consent; SFTP pending:** exercise two clients
+   through the production publication/poll/reconciliation path.

@@ -1,4 +1,4 @@
-from .bundled import load_bundled_workflow
+from .bundled import bundled_workflow_templates, load_bundled_workflow
 from .engine import WorkflowEngine
 from .loader import load_workflow
 from .model import (
@@ -25,6 +25,7 @@ __all__ = [
     "WorkflowInstance",
     "instance_from_dict",
     "instance_to_dict",
+    "bundled_workflow_templates",
     "load_bundled_workflow",
     "load_workflow",
 ]

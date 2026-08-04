@@ -12,6 +12,7 @@
           version="0.2"
           templateId="integrativeElection"
           templateVersion="0.2.0"
+          description="Participants nominate a candidate and explain why. Configured parallel rounds keep responses unpublished until everyone has submitted, then show them together. The proposed candidate is elected unless a facilitated valid objection excludes them."
           asynchronous="true"
           trustedSpace="true">
         <cwp:role id="facilitator" kind="facilitator" min="1" max="1"/>
@@ -56,6 +57,8 @@
       </bpmn:multiInstanceLoopCharacteristics>
     </bpmn:userTask>
 
+    <bpmn:exclusiveGateway id="Gateway_NominationReasonCompatibility" name="Nomination reasons included?"/>
+
     <bpmn:userTask id="Task_ShareReasons" name="Share nomination reasons">
       <bpmn:extensionElements>
         <cwp:assignment role="requiredParticipant"/>
@@ -81,13 +84,13 @@
         <cwp:humanRound
             audience="requiredParticipant"
             participation="all"
-            ordering="sequential"
-            publication="immediate"
+            ordering="parallel"
+            publication="onRoundComplete"
             responseSchema="../schemas/integrative-election.responses.schema.json#/$defs/nominationChange"
             completionRule="allResponses"
             participantSnapshot="true"/>
       </bpmn:extensionElements>
-      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+      <bpmn:multiInstanceLoopCharacteristics isSequential="false">
         <bpmn:completionCondition
             xsi:type="bpmn:tFormalExpression"
             language="urn:s-protocol:consent-workflow:predicate">allResponses</bpmn:completionCondition>
@@ -127,13 +130,13 @@
         <cwp:humanRound
             audience="requiredParticipant"
             participation="all"
-            ordering="sequential"
-            publication="immediate"
+            ordering="parallel"
+            publication="onRoundComplete"
             responseSchema="../schemas/integrative-election.responses.schema.json#/$defs/objection"
             completionRule="allResponses"
             participantSnapshot="true"/>
       </bpmn:extensionElements>
-      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+      <bpmn:multiInstanceLoopCharacteristics isSequential="false">
         <bpmn:completionCondition
             xsi:type="bpmn:tFormalExpression"
             language="urn:s-protocol:consent-workflow:predicate">allResponses</bpmn:completionCondition>
@@ -173,6 +176,7 @@
           <cwp:assignment role="facilitator"/>
           <cwp:input
               role="facilitator"
+              contextField="objectionId"
               responseSchema="../schemas/integrative-election.responses.schema.json#/$defs/facilitatorValidity"
               completionRule="validResponse"/>
         </bpmn:extensionElements>
@@ -230,7 +234,13 @@
       <bpmn:extensionElements><cwp:guard predicate="rolePresentationNotRequired"/></bpmn:extensionElements>
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_E4" sourceRef="Task_PresentRole" targetRef="Task_Nominate"/>
-    <bpmn:sequenceFlow id="Flow_E5" sourceRef="Task_Nominate" targetRef="Task_ShareReasons"/>
+    <bpmn:sequenceFlow id="Flow_E5" sourceRef="Task_Nominate" targetRef="Gateway_NominationReasonCompatibility"/>
+    <bpmn:sequenceFlow id="Flow_E5_Current" sourceRef="Gateway_NominationReasonCompatibility" targetRef="Task_ChangeNominations">
+      <bpmn:extensionElements><cwp:guard predicate="always"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_E5_Legacy" sourceRef="Gateway_NominationReasonCompatibility" targetRef="Task_ShareReasons">
+      <bpmn:extensionElements><cwp:guard predicate="never"/></bpmn:extensionElements>
+    </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_E6" sourceRef="Task_ShareReasons" targetRef="Task_ChangeNominations"/>
     <bpmn:sequenceFlow id="Flow_E7" sourceRef="Task_ChangeNominations" targetRef="Task_CalculateRanking"/>
     <bpmn:sequenceFlow id="Flow_E8" sourceRef="Task_CalculateRanking" targetRef="Gateway_TopResult"/>
