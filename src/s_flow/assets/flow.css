@@ -13,6 +13,17 @@ body {
   color: #edf0f3;
 }
 
+/* Stays put while the page scrolls. The header carries the process
+   selector, the connection state and the panes, and a process long enough
+   to scroll used to take all of it away exactly when it was being read. It
+   sits under the shell's sibling alarm, which is above everything. */
+header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #181b20;
+}
+
 main {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(18rem, 1fr);
