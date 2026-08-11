@@ -149,6 +149,15 @@ def build_routes(logic, runtime) -> list[Route]:
             lambda: logic.delete_agenda_item(data["item_uuid"]),
         )
 
+    async def api_agenda_update(request: Request):
+        data = await request.json()
+        return await _mutation(
+            runtime, data,
+            lambda: logic.update_agenda_item(
+                data["item_uuid"], data.get("text", ""),
+            ),
+        )
+
     async def api_agenda_priority(request: Request):
         data = await request.json()
         return await _mutation(
@@ -202,6 +211,7 @@ def build_routes(logic, runtime) -> list[Route]:
         Route("/api/flow/rollback", api_rollback, methods=["POST"]),
         Route("/api/flow/agenda/create", api_agenda_create, methods=["POST"]),
         Route("/api/flow/agenda/delete", api_agenda_delete, methods=["POST"]),
+        Route("/api/flow/agenda/update", api_agenda_update, methods=["POST"]),
         Route(
             "/api/flow/agenda/set_priority",
             api_agenda_priority,
