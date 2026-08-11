@@ -80,6 +80,20 @@ class FlowLogicTests(unittest.TestCase):
         self.assertEqual(payload["known_identities"][0]["uuid"], self.session.identity.uuid)
         self.assertEqual(payload["processes"][0]["required_from_me"], "Configure participants")
 
+    def test_an_agenda_item_author_can_update_its_text(self):
+        process_uuid = self.logic.create_process("Consent policy").value
+        item = self.logic.create_agenda_item(
+            process_uuid, "First wording",
+        ).value
+
+        result = self.logic.update_agenda_item(item.uuid, "Revised wording")
+
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(
+            self.session.protocol.index[item.uuid].data["text"],
+            "Revised wording",
+        )
+
     def test_stale_rename_is_rejected_by_content_hash(self):
         process_uuid = self.logic.create_process("Original").value
         process = self.session.protocol.index[process_uuid]
