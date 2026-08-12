@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Agenda items and counts now derive from verified perspectives without
+  adopting peer records into the local Flow topic.
+
 - Added a facade-level Integrative Election command that atomically configures
   the frozen required-participant snapshot, counterpart facilitator, eligible
   candidates, and starts the process. Consumers never manipulate Flow runtime
