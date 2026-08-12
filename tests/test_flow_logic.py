@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from sovereign import ProtocolNode, Session
@@ -71,22 +72,26 @@ class FlowLogicTests(unittest.TestCase):
             "Election", "integrative-election", "0.2.0",
         )
         self.logic.start_process(created.value)
-        saved = self.logic.save_snapshot(
+        saved = self.logic.export_snapshot(
             created.value, "Election baseline", "Reusable election",
         )
         self.logic.delete_process(created.value)
 
-        restored = self.logic.create_from_snapshot(saved.value, "Next election")
+        snapshot_file = json.loads(json.dumps(saved.value))
+        restored = self.logic.create_from_snapshot(snapshot_file, "Next election")
 
         self.assertEqual(saved.status, "ok", saved.reason)
-        self.assertEqual(self.logic.snapshots()[0]["description"], "Reusable election")
+        self.assertEqual(saved.value["format"], "s-protocol.item-snapshot")
+        self.assertEqual(saved.value["description"], "Reusable election")
         process = self.session.protocol.index[restored.value]
         self.assertEqual(process.data["title"], "Next election")
         self.assertEqual(process.data["lifecycle"], "setup")
         self.assertIsNone(self.logic.workflow.state_node(process))
         self.assertNotEqual(restored.value, created.value)
-        self.assertEqual(self.logic.delete_snapshot(saved.value).status, "ok")
-        self.assertEqual(self.logic.snapshots(), [])
+        self.assertEqual(
+            [item.data["type"] for item in self.logic._container().live_children()],
+            [PROCESS_TYPE],
+        )
 
     def test_process_payload_uses_core_identities_and_agenda(self):
         process_uuid = self.logic.create_process("Consent policy").value

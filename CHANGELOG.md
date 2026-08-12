@@ -3,7 +3,9 @@
 ## Unreleased
 
 - Agenda items and counts now derive from verified perspectives without
-  adopting peer records into the local Flow topic.
+  adopting peer records into the local Flow topic. The staleness window is
+  Core's default rather than a Flow declaration; the unused
+  `agenda_perspective_*` configuration keys are gone.
 
 - Added a facade-level Integrative Election command that atomically configures
   the frozen required-participant snapshot, counterpart facilitator, eligible
