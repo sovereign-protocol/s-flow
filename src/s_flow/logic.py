@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from datetime import datetime, timezone
 
 from sovereign import ApplicationRegistration, ProtocolNode, Session, SessionResult
 
@@ -18,10 +19,10 @@ from .workflow_adapter import (
 
 
 FLOW_APPLICATION_ID = "flow"
-DEFAULT_AGENDA_PERSPECTIVE_MAX_AGE_SECONDS = 2 * 60 * 60
 FLOW_APP_NAME = "S-Flow"
 PROCESS_TYPE = "flow_process"
-PROCESS_SNAPSHOT_TYPE = "flow_process_snapshot"
+SNAPSHOT_FORMAT = "s-protocol.item-snapshot"
+SNAPSHOT_FORMAT_VERSION = 1
 ASSIGNMENT_TYPE = "flow_assignment"
 
 ROLE_TYPES = frozenset({
@@ -161,69 +162,49 @@ class FlowLogic:
             effects=effects,
         )
 
-    def snapshots(self) -> list[dict]:
-        container = self._find_container()
-        if not container:
-            return []
-        return sorted(
-            [
-                self._snapshot_summary(node)
-                for node in container.live_children()
-                if node.data.get("type") == PROCESS_SNAPSHOT_TYPE
-            ],
-            key=lambda item: (item["name"].casefold(), item["saved_at"]),
-        )
-
-    def save_snapshot(
+    def export_snapshot(
         self, process_uuid: str, name: str = "", description: str = "",
     ) -> SessionResult:
         process = self._node(process_uuid, PROCESS_TYPE)
         if not process:
             return SessionResult("error", reason="process not found")
         source_name = str(process.data.get("title") or "Untitled flow")
-        requested = str(name or "").strip() or f"{source_name} snapshot"
-        snapshot_name = self._distinct_snapshot_name(requested)
-        created = self.session.create_child(
-            self._container().uuid,
-            {
-                "type": PROCESS_SNAPSHOT_TYPE,
-                "name": snapshot_name,
-                "description": str(description or "").strip(),
-                "source_name": source_name,
+        return SessionResult("ok", value={
+            "format": SNAPSHOT_FORMAT,
+            "format_version": SNAPSHOT_FORMAT_VERSION,
+            "item_type": "flow",
+            "name": str(name or "").strip() or f"{source_name} snapshot",
+            "description": str(description or "").strip(),
+            "saved_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+            "source_name": source_name,
+            "content": {
                 "definition_id": str(process.data.get("definition_id") or ""),
                 "definition_version": str(process.data.get("definition_version") or ""),
                 "role_presentation_required": bool(
                     process.data.get("role_presentation_required", False)
                 ),
-                "author_uuid": self.session.identity.uuid,
-                "author_name": str(self.session.identity.data.get("name") or ""),
             },
-            {},
-        )
-        if created.status != "ok":
-            return created
-        return SessionResult(
-            "ok", value=created.value.uuid, effects=list(created.effects),
-        )
+        })
 
     def create_from_snapshot(
-        self, snapshot_uuid: str, title: str = "",
+        self, document: dict, title: str = "",
     ) -> SessionResult:
-        snapshot = self._snapshot_node(snapshot_uuid)
-        if not snapshot:
-            return SessionResult("error", reason="snapshot not found")
+        error = self._snapshot_error(document, "flow")
+        if error:
+            return SessionResult("error", reason=error)
+        content = document["content"]
         requested = str(title or "").strip() or str(
-            snapshot.data.get("source_name") or snapshot.data.get("name") or "Untitled flow"
+            document.get("source_name") or document.get("name") or "Untitled flow"
         )
         created = self.create_process(
             requested,
-            str(snapshot.data.get("definition_id") or ""),
-            str(snapshot.data.get("definition_version") or ""),
+            str(content.get("definition_id") or ""),
+            str(content.get("definition_version") or ""),
         )
         if created.status != "ok":
             return created
         process = self._node(created.value, PROCESS_TYPE)
-        if process and snapshot.data.get("role_presentation_required"):
+        if process and content.get("role_presentation_required"):
             updated = self.session.modify(
                 process.uuid,
                 {**process.data, "role_presentation_required": True},
@@ -234,38 +215,19 @@ class FlowLogic:
             created.effects = [*created.effects, *updated.effects]
         return created
 
-    def delete_snapshot(self, snapshot_uuid: str) -> SessionResult:
-        snapshot = self._snapshot_node(snapshot_uuid)
-        if not snapshot:
-            return SessionResult("error", reason="snapshot not found")
-        return self.session.delete(snapshot.uuid)
-
-    def _snapshot_node(self, snapshot_uuid: str) -> ProtocolNode | None:
-        node = self.session.protocol.index.get(snapshot_uuid)
-        return node if (
-            node and not node.deleted and node.data.get("type") == PROCESS_SNAPSHOT_TYPE
-        ) else None
-
-    def _distinct_snapshot_name(self, requested: str) -> str:
-        existing = {item["name"].casefold() for item in self.snapshots()}
-        if requested.casefold() not in existing:
-            return requested
-        index = 2
-        while f"{requested} ({index})".casefold() in existing:
-            index += 1
-        return f"{requested} ({index})"
-
     @staticmethod
-    def _snapshot_summary(node: ProtocolNode) -> dict:
-        return {
-            "uuid": node.uuid,
-            "name": str(node.data.get("name") or "Saved snapshot"),
-            "description": str(node.data.get("description") or ""),
-            "source_name": str(node.data.get("source_name") or ""),
-            "saved_at": node.created_at,
-            "author_uuid": str(node.data.get("author_uuid") or ""),
-            "author_name": str(node.data.get("author_name") or ""),
-        }
+    def _snapshot_error(document: object, item_type: str) -> str:
+        if not isinstance(document, dict):
+            return "snapshot file is invalid"
+        if document.get("format") != SNAPSHOT_FORMAT:
+            return "not an S-Protocol item snapshot"
+        if document.get("format_version") != SNAPSHOT_FORMAT_VERSION:
+            return "snapshot version is not supported"
+        if document.get("item_type") != item_type:
+            return f"snapshot does not contain a {item_type}"
+        if not isinstance(document.get("content"), dict):
+            return "snapshot content is invalid"
+        return ""
 
     def create_integrative_election(
         self,
@@ -626,26 +588,10 @@ class FlowLogic:
     ) -> SessionResult:
         if not self._node(process_uuid, PROCESS_TYPE):
             return SessionResult("error", reason="process not found")
-        return self.session.create_agenda_item(
-            process_uuid, text, priority, **self._agenda_perspective_policy(),
-        )
+        return self.session.create_agenda_item(process_uuid, text, priority)
 
     def _agenda_items(self, topic_uuid: str):
-        return self.session.agenda_projection(
-            topic_uuid, **self._agenda_perspective_policy(),
-        )
-
-    def _agenda_perspective_policy(self) -> dict:
-        configured = self.config.get(
-            "agenda_perspective_max_age_seconds",
-            DEFAULT_AGENDA_PERSPECTIVE_MAX_AGE_SECONDS,
-        )
-        return {
-            "max_age_seconds": (
-                None if configured is None else float(configured)
-            ),
-            "not_before": self.config.get("agenda_perspective_not_before"),
-        }
+        return self.session.agenda_projection(topic_uuid)
 
     def delete_agenda_item(self, item_uuid: str) -> SessionResult:
         if not self.owns_node(item_uuid):
@@ -667,9 +613,7 @@ class FlowLogic:
     def move_agenda_item(self, item_uuid: str, index: int) -> SessionResult:
         if not self.owns_node(item_uuid):
             return SessionResult("error", reason="agenda item not found")
-        return self.session.move_agenda_item(
-            item_uuid, index, **self._agenda_perspective_policy(),
-        )
+        return self.session.move_agenda_item(item_uuid, index)
 
     def process_payload(
         self, requested_uuid: str | None = None, network: dict | None = None,
