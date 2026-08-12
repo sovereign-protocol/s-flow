@@ -10,7 +10,6 @@
   <body>
     <header><div id="shell"></div></header>
     <div id="toast" class="toast"></div>
-    <div id="reactionMenu" class="reaction-menu" role="menu" hidden></div>
     <main>
       <section id="processPanel" class="panel process-panel">
         <div class="panel-heading">
@@ -144,10 +143,24 @@
         button.setAttribute("aria-label", "React to proposed differences");
         const info = transitionInfo(node.uuid);
         if (info) button.title = transitionLabel(info);
-        button.onclick = (event) => {
-          event.stopPropagation();
-          openReactionMenu(button, node.uuid);
-        };
+        SovereignUI.actionMenu({
+          button,
+          emptyMessage: "No reaction available",
+          items: () => reactionChoices(node.uuid).map((choice) => ({
+            label: choice.label,
+            onSelect: async () => {
+              const endpoint = choice.action === "rollback"
+                ? "/api/flow/rollback"
+                : "/api/flow/adopt";
+              await run(() => api(endpoint, {
+                node_uuid: node.uuid,
+                source_addr: choice.peer.addr,
+                adopt_absence: choice.action === "adopt" && choice.peer.missing,
+                rollback_absence: choice.action === "rollback" && choice.peer.missing,
+              }), choice.action === "rollback" ? "Change taken back" : "Change adopted");
+            },
+          })),
+        });
         return button;
       }
 
@@ -166,50 +179,6 @@
           };
         });
       }
-
-      function closeReactionMenu() {
-        const menu = el("reactionMenu");
-        menu.hidden = true;
-        menu.replaceChildren();
-      }
-
-      function openReactionMenu(anchor, uuid) {
-        const choices = reactionChoices(uuid);
-        if (!choices.length) return showToast("No reaction available", true);
-        const menu = el("reactionMenu");
-        menu.replaceChildren();
-        for (const choice of choices) {
-          const option = document.createElement("button");
-          option.type = "button";
-          option.className = "reaction-menu-option";
-          option.textContent = choice.label;
-          option.onclick = async (event) => {
-            event.stopPropagation();
-            closeReactionMenu();
-            const endpoint = choice.action === "rollback"
-              ? "/api/flow/rollback"
-              : "/api/flow/adopt";
-            await run(() => api(endpoint, {
-              node_uuid: uuid,
-              source_addr: choice.peer.addr,
-              adopt_absence: choice.action === "adopt" && choice.peer.missing,
-              rollback_absence: choice.action === "rollback" && choice.peer.missing,
-            }), choice.action === "rollback" ? "Change taken back" : "Change adopted");
-          };
-          menu.append(option);
-        }
-        menu.hidden = false;
-        const rect = anchor.getBoundingClientRect();
-        menu.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - menu.offsetWidth - 8))}px`;
-        menu.style.top = `${Math.min(rect.bottom + 4, innerHeight - menu.offsetHeight - 8)}px`;
-      }
-
-      document.addEventListener("click", (event) => {
-        if (!event.target.closest("#reactionMenu")) closeReactionMenu();
-      });
-      document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") closeReactionMenu();
-      });
 
       function currentRevision() {
         const artifact = state?.workflow?.artifacts?.proposal;
@@ -370,19 +339,10 @@
         const choices = schemaFieldChoices(name, schema, task);
         let input;
         if (choices.length) {
-          input = document.createElement("select");
-          if (!required) {
-            const empty = document.createElement("option");
-            empty.value = "";
-            empty.textContent = "—";
-            input.append(empty);
-          }
-          for (const [value, text] of choices) {
-            const option = document.createElement("option");
-            option.value = String(value);
-            option.textContent = text;
-            input.append(option);
-          }
+          input = SovereignUI.selectionField({
+            items: choices,
+            ...(required ? {} : {emptyLabel: "—"}),
+          }).select;
         } else if (schema.type === "boolean") {
           input = document.createElement("input");
           input.type = "checkbox";
@@ -399,12 +359,15 @@
         }
         input.id = `${task.id}-${name}`.replace(/[^a-zA-Z0-9_-]/g, "-");
         input.required = required;
-        if (schema.default !== undefined) input.value = String(schema.default);
+        if (schema.default !== undefined) {
+          input.value = String(schema.default);
+          SovereignUI.refreshSelect(input);
+        }
 
         const guidance = FIELD_GUIDANCE[name] || [];
         const explanation = schema.description || guidance[0];
         const example = schema.examples?.[0] ?? schema.example ?? guidance[1];
-        label.append(heading, input);
+        label.append(heading, input._sovereignSelectControl?.control || input);
         if (explanation || example !== undefined) {
           const help = document.createElement("small");
           help.className = "field-help";
@@ -466,19 +429,7 @@
       }
 
       function selectField(caption, id, choices) {
-        const label = document.createElement("label");
-        const title = document.createElement("span");
-        title.textContent = caption;
-        const input = document.createElement("select");
-        input.id = id;
-        for (const [value, text] of choices) {
-          const option = document.createElement("option");
-          option.value = value;
-          option.textContent = text;
-          input.append(option);
-        }
-        label.append(title, input);
-        return { label, input };
+        return SovereignUI.selectionField({label: caption, id, items: choices});
       }
 
       async function submitTask(event, task, response) {
@@ -603,17 +554,15 @@
         if (available.length) {
           const form = document.createElement("form");
           form.className = "compact-form";
-          const select = document.createElement("select");
-          for (const person of available) {
-            const option = document.createElement("option");
-            option.value = person.uuid;
-            option.textContent = person.name || person.uuid.slice(0, 8);
-            select.append(option);
-          }
+          const {select, control} = SovereignUI.selectionControl({
+            items: available.map((person) => [
+              person.uuid, person.name || person.uuid.slice(0, 8),
+            ]),
+          });
           const add = document.createElement("button");
           add.type = "submit";
           add.textContent = "Add participant";
-          form.append(select, add);
+          form.append(control, add);
           form.onsubmit = (event) => {
             event.preventDefault();
             run(() => api("/api/flow/assignments/set", {

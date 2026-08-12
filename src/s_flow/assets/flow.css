@@ -267,32 +267,6 @@ summary { cursor: pointer; }
 .diff.stage-awaiting-peer { border-color: #6c8fcb; }
 .diff.stage-conflict { border-color: #cf626d; }
 
-.reaction-menu {
-  position: fixed;
-  z-index: 1000;
-  min-width: 15rem;
-  max-width: min(24rem, calc(100vw - 1rem));
-  border: 1px solid #59616d;
-  border-radius: 0.5rem;
-  padding: 0.35rem;
-  background: #22272e;
-  box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.4);
-}
-
-.reaction-menu[hidden] { display: none; }
-
-.reaction-menu-option {
-  display: block;
-  width: 100%;
-  border: 0;
-  padding: 0.65rem;
-  background: transparent;
-  text-align: left;
-}
-
-.reaction-menu-option:hover,
-.reaction-menu-option:focus-visible { background: #303741; }
-
 @media (max-width: 760px) {
   main { grid-template-columns: 1fr; }
   .compact-form { grid-template-columns: 1fr; }
