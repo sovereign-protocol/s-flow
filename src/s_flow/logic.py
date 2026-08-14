@@ -870,22 +870,66 @@ class FlowLogic:
                 continue
             owner_key = self.session.peer_identity_key_for_address(owner_addr)
 
-            def eligible(node: ProtocolNode, _event_type: str) -> bool:
-                node_type = node.data.get("type")
-                if node_type == RESPONSE_TYPE:
-                    return True
-                return (
-                    node_type in {PROCESS_TYPE, ASSIGNMENT_TYPE, RUNTIME_STATE_TYPE}
-                    and bool(owner_key)
-                    and node.revision_origin == owner_key
-                )
-
+            self.publish_adoption_metadata(process, owner_key)
             changed = self.session.reconcile_peer_changes(
-                owner_addr,
-                process.uuid,
-                node_is_eligible=eligible,
+                owner_addr, process.uuid,
             ) or changed
         return SessionResult("ok", value=changed, effects=effects)
+
+    def publish_adoption_metadata(
+        self, process: ProtocolNode, owner_key: str | None = None,
+    ) -> None:
+        """Declare how this process's nodes are handled, for Core to enforce.
+
+        What is declarable today is authorship: the process itself, its
+        assignments and its runtime state are the owner's to write, so every
+        held node of those types names the owner's key. Responses are anyone's
+        and stay unconstrained.
+
+        A node this client does not hold is classified at first sight, since a
+        parent's `additions` cannot tell an incoming response from an incoming
+        assignment. See Core's DESIGN_ADOPTION_METADATA.md.
+        """
+        self.session.set_topic_adoption_default(
+            process.uuid, adopt="auto", additions="auto",
+        )
+        self.session.set_adoption_classifier(
+            process.uuid,
+            lambda node, default, key=owner_key: (
+                self._classify_incoming_node(key, node)
+            ),
+        )
+        # Agendas are Session's: projected from each author's perspective,
+        # never adopted, so a copy of one has no business in this tree.
+        self.session.set_adoption_metadata_for_subtree(
+            process.uuid, adopt="never", additions="never",
+            node_type="agenda_item",
+        )
+        if not owner_key:
+            return
+        for node_type in (PROCESS_TYPE, ASSIGNMENT_TYPE, RUNTIME_STATE_TYPE):
+            self.session.set_adoption_metadata_for_subtree(
+                process.uuid, author=owner_key, node_type=node_type,
+            )
+
+    @staticmethod
+    def _classify_incoming_node(owner_key: str | None, node) -> dict | None:
+        """How a node this process does not yet hold is to be handled.
+
+        A response is anyone's to write. The process itself, its assignments
+        and its runtime state are the owner's alone. Nothing else belongs in
+        this topic at all.
+        """
+        node_type = node.data.get("type")
+        if node_type == RESPONSE_TYPE:
+            return {"adopt": "auto", "additions": "auto", "author": "any"}
+        if node_type in {PROCESS_TYPE, ASSIGNMENT_TYPE, RUNTIME_STATE_TYPE}:
+            return {
+                "adopt": "auto",
+                "additions": "auto",
+                "author": owner_key or "any",
+            }
+        return {"adopt": "never", "additions": "never"}
 
     def transition_events(self, process: ProtocolNode) -> list[dict]:
         events = []
