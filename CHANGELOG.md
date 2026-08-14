@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Process topics now publish declared adoption metadata to Core: every held
+  process, assignment and runtime-state node names the process owner's identity
+  key as its author, so Core refuses a revision of those from anyone else.
+  Responses stay unconstrained. The eligibility callback is gone: a node this
+  client does not yet hold is classified at first sight instead — a response is
+  anyone's, a process, assignment or runtime-state node is the owner's, and
+  anything else has no business in the topic.
+
 - Agenda items and counts now derive from verified perspectives without
   adopting peer records into the local Flow topic. The staleness window is
   Core's default rather than a Flow declaration; the unused
