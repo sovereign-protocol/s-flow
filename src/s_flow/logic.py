@@ -365,6 +365,21 @@ class FlowLogic:
         return self._remove_local_process(process)
 
     def leave_process(self, process_uuid: str) -> SessionResult:
+        """Stop holding a flow somebody else runs. They keep it.
+
+        Leaving is not deleting, and this used to take the creator's path: end
+        sharing, then write a deletion. That was correct only by arithmetic -
+        the tombstone did not travel because the peer set had just been
+        emptied, and it was pruned locally for the same reason. Nothing about
+        the intent said so, and the release of the channels is an effect the
+        runtime delivers afterwards, so a poll landing in between had a
+        tombstone to publish.
+
+        A drop states it instead: no deletion is written at all, the others
+        see this client stop publishing - which is what they also see when
+        somebody closes their laptop - and a peer who still runs it offers it
+        back as an invitation.
+        """
         process = self._node(process_uuid, PROCESS_TYPE)
         if not process:
             return SessionResult("error", reason="process not found")
@@ -372,7 +387,14 @@ class FlowLogic:
             return SessionResult(
                 "error", reason="the process creator must delete it instead",
             )
-        return self._remove_local_process(process)
+        dropped = self.session.drop_topic(process.uuid)
+        if dropped.status != "ok":
+            return dropped
+        remaining = [
+            item for item in self.processes() if item.uuid != process.uuid
+        ]
+        self._remember_process(remaining[0].uuid if remaining else "")
+        return dropped
 
     def _remove_local_process(self, process: ProtocolNode) -> SessionResult:
         release = self.session.end_topic_sharing(process.uuid)

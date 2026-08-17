@@ -187,6 +187,11 @@ class FlowLogicTests(unittest.TestCase):
         self.assertEqual(left.status, "ok")
         self.assertEqual(self.logic.processes(), [])
         self.assertNotIn(process_uuid, self.session.active_topic_ids())
+        # Leaving writes no deletion at all. Not "a deletion that happens not
+        # to travel because sharing stopped first" - there is nothing left in
+        # the tree to publish if a poll lands while the channels are still
+        # bound, because releasing them is an effect delivered afterwards.
+        self.assertNotIn(process_uuid, self.session.protocol.index)
 
     def test_return_to_setup_reopens_participants_and_starts_a_new_run(self):
         process_uuid = self.logic.create_process(

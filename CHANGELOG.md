@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Leaving a shared flow no longer writes a deletion.** It took the creator's
+  own path — end sharing, then delete — and was correct only by arithmetic: the
+  tombstone did not travel because the peer set had just been emptied, and it
+  was pruned locally for the same reason. Nothing about the intent said so, and
+  releasing the channels is an effect the runtime delivers afterwards, so a
+  poll landing in between had a tombstone to publish. Leaving is Core's
+  `drop_topic` now, which writes no deletion at all: the others see this client
+  stop publishing, and a peer who still runs the flow offers it back as an
+  invitation. Deleting is unchanged and remains the creator's alone.
+
 - Process topics now publish declared adoption metadata to Core: every held
   process, assignment and runtime-state node names the process owner's identity
   key as its author, so Core refuses a revision of those from anyone else.
