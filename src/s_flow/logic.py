@@ -74,6 +74,49 @@ class FlowLogic:
             assignment_scoped=True,
             mount_invitation=True,
             on_peer_update=self.on_peer_update,
+            topic_noun="Flow",
+            # A process with no workflow is not a process, so unlike the
+            # other kinds this one cannot start from nothing.
+            template_required=True,
+            list_templates=self.topic_templates,
+            create_topic=self.make_process,
+        )
+
+    def topic_templates(self) -> list[dict]:
+        return [
+            {
+                "value": str(template.get("id") or ""),
+                "name": str(template.get("name") or template.get("id") or ""),
+                "description": str(template.get("description") or ""),
+            }
+            for template in (self.templates() or [])
+        ]
+
+    def make_process(
+        self, title: str, template: str = "", snapshot: dict | None = None,
+    ) -> SessionResult:
+        """One process, however it starts. Core's create contract.
+
+        The workflow's version is looked up here rather than asked for: a
+        caller that had to carry a template's version alongside its id would
+        be keeping a copy of this application's catalogue.
+        """
+        if snapshot is not None:
+            return self.create_from_snapshot(snapshot, title)
+        definition = str(template or "").strip()
+        chosen = next(
+            (
+                item for item in (self.templates() or [])
+                if str(item.get("id") or "") == definition
+            ),
+            None,
+        )
+        if not chosen:
+            return SessionResult(
+                "error", reason="choose a workflow to start from",
+            )
+        return self.create_process(
+            title, definition, str(chosen.get("version") or ""),
         )
 
     def processes(self) -> list[ProtocolNode]:

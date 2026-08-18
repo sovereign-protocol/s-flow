@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **A flow is called a Flow.** The bar's label was "Process", which is the
+  internal type name; the noun a person meets is the one the application is
+  named for. The application mark is a chain of stages: the square and
+  checkmark it replaces read as a checklist rather than as something that
+  moves through them. See Core's `DESIGN_VOCABULARY.md` and
+  `DESIGN_UI_CONSISTENCY.md` U8.
+
+- **S-Flow says how a process is made.** Its registration carries the noun,
+  the bundled workflows, the rule that one is required, and a `make_process`
+  that looks a workflow's version up from its id — so a caller elsewhere no
+  longer carries a version alongside a template, which was a copy of this
+  application's catalogue kept in three other places.
+
+- **The bar names this process and lists no others.** Reaching another one is
+  the Cockpit's, which holds every topic this client has rather than one
+  application's share of them. A deep link is `?topic=<uuid>` now, the one
+  name every application answers to.
+
 - **Leaving a shared flow no longer writes a deletion.** It took the creator's
   own path — end sharing, then delete — and was correct only by arithmetic: the
   tombstone did not travel because the peer set had just been emptied, and it

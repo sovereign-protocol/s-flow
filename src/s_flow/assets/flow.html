@@ -60,7 +60,10 @@
       const el = (id) => document.getElementById(id);
       let state = null;
       let refreshing = false;
-      let requestedProcess = new URLSearchParams(location.search).get("process_uuid") || "";
+      // `topic` and not `process_uuid`: one name for "open this one", so the
+      // shell can compose a link to any application's topic without knowing
+      // what that application calls its topics.
+      let requestedProcess = new URLSearchParams(location.search).get("topic") || "";
 
       function showToast(message, error = false) {
         const toast = el("toast");
@@ -774,14 +777,12 @@
           }
           state = await api("/api/flow/process");
           const process = state.process;
-          SovereignShell.setTopicSelector({
-            label: "Process",
-            topics: (state.processes || []).map((item) => ({ uuid: item.uuid, title: item.title })),
-            selectedUuid: process?.uuid,
-            onSelect: async (processUuid) => {
-              await api("/api/flow/processes/select", { process_uuid: processUuid });
-              await refresh();
-            },
+          // The name of this process, and no list of the others: reaching
+          // another one is the Cockpit's, which holds every topic this
+          // client has rather than one application's share of them.
+          SovereignShell.setTopicName({
+            label: "Flow",
+            title: process?.title || "",
             onRename: async (title) => {
               await api("/api/flow/processes/rename", {
                 process_uuid: process.uuid,
