@@ -722,7 +722,7 @@ class FlowLogic:
                 )
             },
             "transition_events": events,
-            "transition_by_node": self.transition_by_node(events),
+            "transition_by_node": self.session.group_transition_events(events),
             "workflow": (
                 self.workflow.projection(
                     selected, self.session.identity.uuid,
@@ -877,7 +877,7 @@ class FlowLogic:
                 for item in self._agenda_items(process.uuid)
             ],
             "transition_events": events,
-            "transition_by_node": self.transition_by_node(events),
+            "transition_by_node": self.session.group_transition_events(events),
             "identity_uuid": self.session.identity.uuid,
             "known_identities": self.session.known_identities(),
             "workflow": self.workflow.projection(
@@ -1021,38 +1021,6 @@ class FlowLogic:
                 events.append(event)
         return events
 
-    def transition_by_node(self, events: list[dict]) -> dict:
-        grouped: dict[str, dict] = {}
-        for event in events:
-            node_uuid = str(event.get("node_uuid") or "")
-            if not node_uuid:
-                continue
-            info = {
-                key: event.get(key)
-                for key in (
-                    "type", "stage", "peer_addr", "origin_identity",
-                    "local_revision_origin", "peer_revision_origin",
-                    "local_state_hash", "peer_state_hash", "local_base_hash",
-                    "peer_base_hash", "local_revision", "peer_revision",
-                    "peer_observed_local_revision",
-                )
-            }
-            info["changes"] = list(event.get("changes") or [])
-            info["reaction"] = self.session.reaction_for_event(event)
-            info["priority"] = self.session.transition_rank(event)
-            current = grouped.get(node_uuid)
-            if current is None:
-                grouped[node_uuid] = {**info, "events": [dict(info)]}
-                continue
-            current.setdefault("events", []).append(dict(info))
-            if self.session.transition_rank(event) > tuple(
-                current.get("priority") or (0, 0)
-            ):
-                events_for_node = current["events"]
-                current.update(info)
-                current["events"] = events_for_node
-        return grouped
-
     def describe_peer_changes(
         self, peer_addr: str, node_uuid: str, *, authored_locally: bool,
     ) -> list[dict]:
@@ -1132,6 +1100,16 @@ class FlowLogic:
         return self.session.rollback_peer_node(
             source_addr, node_uuid, rollback_absence,
         )
+
+    def react_to_node(
+        self, source_addr: str, node_uuid: str, reaction: str,
+        absent: bool = False,
+    ) -> SessionResult:
+        if reaction == "adopt":
+            return self.accept_peer_node(source_addr, node_uuid, absent)
+        if reaction == "rollback":
+            return self.rollback_peer_node(source_addr, node_uuid, absent)
+        return SessionResult("error", reason="unknown reaction")
 
     def owns_node(self, node_uuid: str) -> bool:
         node = self.session.protocol.index.get(node_uuid)

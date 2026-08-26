@@ -7,7 +7,7 @@ from sovereign import ProtocolNode
 from .logic import FlowLogic
 
 
-FLOW_FACADE_API_VERSION = 1
+FLOW_FACADE_API_VERSION = 2
 
 
 class FlowFacade:
@@ -127,18 +127,10 @@ class FlowFacade:
     def move_agenda_item(self, item_uuid: str, index: int):
         return self._logic.move_agenda_item(item_uuid, index)
 
-    def accept_peer_node(
-        self, source_addr: str, node_uuid: str,
-        adopt_absence: bool = False,
+    def react_to_node(
+        self, source_addr: str, node_uuid: str, reaction: str,
+        absent: bool = False,
     ):
-        return self._logic.accept_peer_node(
-            source_addr, node_uuid, adopt_absence,
-        )
-
-    def rollback_peer_node(
-        self, source_addr: str, node_uuid: str,
-        rollback_absence: bool = False,
-    ):
-        return self._logic.rollback_peer_node(
-            source_addr, node_uuid, rollback_absence,
+        return self._logic.react_to_node(
+            source_addr, node_uuid, reaction, absent,
         )

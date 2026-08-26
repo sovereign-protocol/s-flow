@@ -120,20 +120,13 @@ def build_routes(logic, runtime) -> list[Route]:
             lambda: logic.acknowledge_information(data["process_uuid"]),
         )
 
-    async def api_adopt(request: Request):
+    async def api_react(request: Request):
         data = await request.json()
-        return await _mutation(runtime, data, lambda: logic.accept_peer_node(
+        return await _mutation(runtime, data, lambda: logic.react_to_node(
             data["source_addr"],
             data["node_uuid"],
-            bool(data.get("adopt_absence")),
-        ))
-
-    async def api_rollback(request: Request):
-        data = await request.json()
-        return await _mutation(runtime, data, lambda: logic.rollback_peer_node(
-            data["source_addr"],
-            data["node_uuid"],
-            bool(data.get("rollback_absence")),
+            data.get("reaction", ""),
+            bool(data.get("absent")),
         ))
 
     async def api_agenda_create(request: Request):
@@ -207,8 +200,7 @@ def build_routes(logic, runtime) -> list[Route]:
             api_acknowledge,
             methods=["POST"],
         ),
-        Route("/api/flow/adopt", api_adopt, methods=["POST"]),
-        Route("/api/flow/rollback", api_rollback, methods=["POST"]),
+        Route("/api/flow/react", api_react, methods=["POST"]),
         Route("/api/flow/agenda/create", api_agenda_create, methods=["POST"]),
         Route("/api/flow/agenda/delete", api_agenda_delete, methods=["POST"]),
         Route("/api/flow/agenda/update", api_agenda_update, methods=["POST"]),
