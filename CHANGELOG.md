@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Fixed: a connection made on a process never reached a peer.** A process's
+  adoption classifier named every node type it would accept from a peer at
+  first sight and refused everything else — a list written before Core's
+  `sovereign_relationship` (connected work, s-core/DESIGN_NAVIGATION_LINKS.md)
+  existed, so a connection either side made on a shared process silently
+  never adopted for the other. It is now classified the same way a response
+  already was: anyone's to write, adopted on arrival.
+
 - **A flow is called a Flow.** The bar's label was "Process", which is the
   internal type name; the noun a person meets is the one the application is
   named for. The application mark is a chain of stages: the square and

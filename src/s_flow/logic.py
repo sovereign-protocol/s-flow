@@ -21,6 +21,10 @@ from .workflow_adapter import (
 FLOW_APPLICATION_ID = "flow"
 FLOW_APP_NAME = "S-Flow"
 PROCESS_TYPE = "flow_process"
+# Core's `sovereign_relationship` (s-core/src/sovereign/relationships.py).
+# Matched by literal name, the way this application already matches every
+# node type it does not own, rather than importing a Core submodule.
+RELATIONSHIP_TYPE = "sovereign_relationship"
 SNAPSHOT_FORMAT = "s-protocol.item-snapshot"
 SNAPSHOT_FORMAT_VERSION = 1
 ASSIGNMENT_TYPE = "flow_assignment"
@@ -981,12 +985,14 @@ class FlowLogic:
     def _classify_incoming_node(owner_key: str | None, node) -> dict | None:
         """How a node this process does not yet hold is to be handled.
 
-        A response is anyone's to write. The process itself, its assignments
-        and its runtime state are the owner's alone. Nothing else belongs in
-        this topic at all.
+        A response is anyone's to write, and so is a connection to another
+        topic (Core's `sovereign_relationship`) - it is a fact about its own
+        author, not a proposal anyone else's adoption gates. The process
+        itself, its assignments and its runtime state are the owner's alone.
+        Nothing else belongs in this topic at all.
         """
         node_type = node.data.get("type")
-        if node_type == RESPONSE_TYPE:
+        if node_type in {RESPONSE_TYPE, RELATIONSHIP_TYPE}:
             return {"adopt": "auto", "additions": "auto", "author": "any"}
         if node_type in {PROCESS_TYPE, ASSIGNMENT_TYPE, RUNTIME_STATE_TYPE}:
             return {

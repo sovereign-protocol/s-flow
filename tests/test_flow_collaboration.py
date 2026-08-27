@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from sovereign import app_server
+from sovereign.relationships import RelationshipService
 
 from s_flow.desktop import APPLICATION_ALIASES
 from s_flow.workflow_adapter import (
@@ -238,6 +239,33 @@ class MinimalConsentCollaborationTests(unittest.TestCase):
         self.assertEqual(
             self.host.session.protocol.index[process_uuid].data["title"],
             "Suggested title",
+        )
+
+    def test_a_connection_made_on_a_process_replicates_to_a_peer(self):
+        process_uuid = self.host.logic.create_process(
+            "Adopt policy", "minimal-consent", "0.2.0",
+        ).value
+        other_uuid = self.host.logic.create_process(
+            "Elsewhere", "minimal-consent", "0.2.0",
+        ).value
+        self.assertEqual(connect(self.host, self.guest)["status"], "ok")
+        self.assertEqual(
+            connect(self.host, self.guest, process_uuid)["status"], "ok",
+        )
+
+        host_relationships = RelationshipService(
+            self.host.session, self.host.collaboration,
+        )
+        related = host_relationships.create_relationship(process_uuid, other_uuid)
+        self.assertEqual(related.status, "ok", related.reason)
+        sync(self.host, self.guest)
+
+        guest_relationships = RelationshipService(
+            self.guest.session, self.guest.collaboration,
+        )
+        guest_rows = guest_relationships.relationships(process_uuid)
+        self.assertEqual(
+            [row["topic_uuid"] for row in guest_rows], [other_uuid],
         )
 
     def test_return_to_setup_converges_and_invitee_can_leave(self):
