@@ -21,6 +21,10 @@ from .workflow_adapter import (
 FLOW_APPLICATION_ID = "flow"
 FLOW_APP_NAME = "S-Flow"
 PROCESS_TYPE = "flow_process"
+# Core's `sovereign_relationship` (s-core/src/sovereign/relationships.py).
+# Matched by literal name, the way this application already matches every
+# node type it does not own, rather than importing a Core submodule.
+RELATIONSHIP_TYPE = "sovereign_relationship"
 SNAPSHOT_FORMAT = "s-protocol.item-snapshot"
 SNAPSHOT_FORMAT_VERSION = 1
 ASSIGNMENT_TYPE = "flow_assignment"
@@ -74,6 +78,49 @@ class FlowLogic:
             assignment_scoped=True,
             mount_invitation=True,
             on_peer_update=self.on_peer_update,
+            topic_noun="Flow",
+            # A process with no workflow is not a process, so unlike the
+            # other kinds this one cannot start from nothing.
+            template_required=True,
+            list_templates=self.topic_templates,
+            create_topic=self.make_process,
+        )
+
+    def topic_templates(self) -> list[dict]:
+        return [
+            {
+                "value": str(template.get("id") or ""),
+                "name": str(template.get("name") or template.get("id") or ""),
+                "description": str(template.get("description") or ""),
+            }
+            for template in (self.templates() or [])
+        ]
+
+    def make_process(
+        self, title: str, template: str = "", snapshot: dict | None = None,
+    ) -> SessionResult:
+        """One process, however it starts. Core's create contract.
+
+        The workflow's version is looked up here rather than asked for: a
+        caller that had to carry a template's version alongside its id would
+        be keeping a copy of this application's catalogue.
+        """
+        if snapshot is not None:
+            return self.create_from_snapshot(snapshot, title)
+        definition = str(template or "").strip()
+        chosen = next(
+            (
+                item for item in (self.templates() or [])
+                if str(item.get("id") or "") == definition
+            ),
+            None,
+        )
+        if not chosen:
+            return SessionResult(
+                "error", reason="choose a workflow to start from",
+            )
+        return self.create_process(
+            title, definition, str(chosen.get("version") or ""),
         )
 
     def processes(self) -> list[ProtocolNode]:
@@ -365,6 +412,21 @@ class FlowLogic:
         return self._remove_local_process(process)
 
     def leave_process(self, process_uuid: str) -> SessionResult:
+        """Stop holding a flow somebody else runs. They keep it.
+
+        Leaving is not deleting, and this used to take the creator's path: end
+        sharing, then write a deletion. That was correct only by arithmetic -
+        the tombstone did not travel because the peer set had just been
+        emptied, and it was pruned locally for the same reason. Nothing about
+        the intent said so, and the release of the channels is an effect the
+        runtime delivers afterwards, so a poll landing in between had a
+        tombstone to publish.
+
+        A drop states it instead: no deletion is written at all, the others
+        see this client stop publishing - which is what they also see when
+        somebody closes their laptop - and a peer who still runs it offers it
+        back as an invitation.
+        """
         process = self._node(process_uuid, PROCESS_TYPE)
         if not process:
             return SessionResult("error", reason="process not found")
@@ -372,7 +434,14 @@ class FlowLogic:
             return SessionResult(
                 "error", reason="the process creator must delete it instead",
             )
-        return self._remove_local_process(process)
+        dropped = self.session.drop_topic(process.uuid)
+        if dropped.status != "ok":
+            return dropped
+        remaining = [
+            item for item in self.processes() if item.uuid != process.uuid
+        ]
+        self._remember_process(remaining[0].uuid if remaining else "")
+        return dropped
 
     def _remove_local_process(self, process: ProtocolNode) -> SessionResult:
         release = self.session.end_topic_sharing(process.uuid)
@@ -657,7 +726,7 @@ class FlowLogic:
                 )
             },
             "transition_events": events,
-            "transition_by_node": self.transition_by_node(events),
+            "transition_by_node": self.session.group_transition_events(events),
             "workflow": (
                 self.workflow.projection(
                     selected, self.session.identity.uuid,
@@ -812,7 +881,7 @@ class FlowLogic:
                 for item in self._agenda_items(process.uuid)
             ],
             "transition_events": events,
-            "transition_by_node": self.transition_by_node(events),
+            "transition_by_node": self.session.group_transition_events(events),
             "identity_uuid": self.session.identity.uuid,
             "known_identities": self.session.known_identities(),
             "workflow": self.workflow.projection(
@@ -916,12 +985,14 @@ class FlowLogic:
     def _classify_incoming_node(owner_key: str | None, node) -> dict | None:
         """How a node this process does not yet hold is to be handled.
 
-        A response is anyone's to write. The process itself, its assignments
-        and its runtime state are the owner's alone. Nothing else belongs in
-        this topic at all.
+        A response is anyone's to write, and so is a connection to another
+        topic (Core's `sovereign_relationship`) - it is a fact about its own
+        author, not a proposal anyone else's adoption gates. The process
+        itself, its assignments and its runtime state are the owner's alone.
+        Nothing else belongs in this topic at all.
         """
         node_type = node.data.get("type")
-        if node_type == RESPONSE_TYPE:
+        if node_type in {RESPONSE_TYPE, RELATIONSHIP_TYPE}:
             return {"adopt": "auto", "additions": "auto", "author": "any"}
         if node_type in {PROCESS_TYPE, ASSIGNMENT_TYPE, RUNTIME_STATE_TYPE}:
             return {
@@ -955,38 +1026,6 @@ class FlowLogic:
                 )
                 events.append(event)
         return events
-
-    def transition_by_node(self, events: list[dict]) -> dict:
-        grouped: dict[str, dict] = {}
-        for event in events:
-            node_uuid = str(event.get("node_uuid") or "")
-            if not node_uuid:
-                continue
-            info = {
-                key: event.get(key)
-                for key in (
-                    "type", "stage", "peer_addr", "origin_identity",
-                    "local_revision_origin", "peer_revision_origin",
-                    "local_state_hash", "peer_state_hash", "local_base_hash",
-                    "peer_base_hash", "local_revision", "peer_revision",
-                    "peer_observed_local_revision",
-                )
-            }
-            info["changes"] = list(event.get("changes") or [])
-            info["reaction"] = self.session.reaction_for_event(event)
-            info["priority"] = self.session.transition_rank(event)
-            current = grouped.get(node_uuid)
-            if current is None:
-                grouped[node_uuid] = {**info, "events": [dict(info)]}
-                continue
-            current.setdefault("events", []).append(dict(info))
-            if self.session.transition_rank(event) > tuple(
-                current.get("priority") or (0, 0)
-            ):
-                events_for_node = current["events"]
-                current.update(info)
-                current["events"] = events_for_node
-        return grouped
 
     def describe_peer_changes(
         self, peer_addr: str, node_uuid: str, *, authored_locally: bool,
@@ -1067,6 +1106,16 @@ class FlowLogic:
         return self.session.rollback_peer_node(
             source_addr, node_uuid, rollback_absence,
         )
+
+    def react_to_node(
+        self, source_addr: str, node_uuid: str, reaction: str,
+        absent: bool = False,
+    ) -> SessionResult:
+        if reaction == "adopt":
+            return self.accept_peer_node(source_addr, node_uuid, absent)
+        if reaction == "rollback":
+            return self.rollback_peer_node(source_addr, node_uuid, absent)
+        return SessionResult("error", reason="unknown reaction")
 
     def owns_node(self, node_uuid: str) -> bool:
         node = self.session.protocol.index.get(node_uuid)

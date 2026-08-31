@@ -20,9 +20,12 @@ APPLICATION_MANIFEST = ApplicationManifest(
     ui_file="flow.html",
     css_file="flow.css",
     icon=(
-        '<path d="M5 4h14v16H5z"></path>'
-        '<path d="M8 9l2 2 5-5"></path>'
-        '<path d="M8 15h8"></path>'
+        # Stages in sequence. The square and checkmark read as a
+        # checklist, not as something that moves through them (U8).
+        '<circle cx="5" cy="12" r="2"></circle>'
+        '<circle cx="12" cy="12" r="2"></circle>'
+        '<circle cx="19" cy="12" r="2"></circle>'
+        '<path d="M7 12h3"></path><path d="M14 12h3"></path>'
     ),
 )
 

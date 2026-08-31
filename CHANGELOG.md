@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+- **Fixed: a connection made on a process never reached a peer.** A process's
+  adoption classifier named every node type it would accept from a peer at
+  first sight and refused everything else — a list written before Core's
+  `sovereign_relationship` (connected work, s-core/DESIGN_NAVIGATION_LINKS.md)
+  existed, so a connection either side made on a shared process silently
+  never adopted for the other. It is now classified the same way a response
+  already was: anyone's to write, adopted on arrival.
+
+- **A flow is called a Flow.** The bar's label was "Process", which is the
+  internal type name; the noun a person meets is the one the application is
+  named for. The application mark is a chain of stages: the square and
+  checkmark it replaces read as a checklist rather than as something that
+  moves through them. See Core's `DESIGN_VOCABULARY.md` and
+  `DESIGN_UI_CONSISTENCY.md` U8.
+
+- **S-Flow says how a process is made.** Its registration carries the noun,
+  the bundled workflows, the rule that one is required, and a `make_process`
+  that looks a workflow's version up from its id — so a caller elsewhere no
+  longer carries a version alongside a template, which was a copy of this
+  application's catalogue kept in three other places.
+
+- **The bar names this process and lists no others.** Reaching another one is
+  the Cockpit's, which holds every topic this client has rather than one
+  application's share of them. A deep link is `?topic=<uuid>` now, the one
+  name every application answers to.
+
+- **Leaving a shared flow no longer writes a deletion.** It took the creator's
+  own path — end sharing, then delete — and was correct only by arithmetic: the
+  tombstone did not travel because the peer set had just been emptied, and it
+  was pruned locally for the same reason. Nothing about the intent said so, and
+  releasing the channels is an effect the runtime delivers afterwards, so a
+  poll landing in between had a tombstone to publish. Leaving is Core's
+  `drop_topic` now, which writes no deletion at all: the others see this client
+  stop publishing, and a peer who still runs the flow offers it back as an
+  invitation. Deleting is unchanged and remains the creator's alone.
+
 - Process topics now publish declared adoption metadata to Core: every held
   process, assignment and runtime-state node names the process owner's identity
   key as its author, so Core refuses a revision of those from anyone else.

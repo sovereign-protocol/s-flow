@@ -60,7 +60,10 @@
       const el = (id) => document.getElementById(id);
       let state = null;
       let refreshing = false;
-      let requestedProcess = new URLSearchParams(location.search).get("process_uuid") || "";
+      // `topic` and not `process_uuid`: one name for "open this one", so the
+      // shell can compose a link to any application's topic without knowing
+      // what that application calls its topics.
+      let requestedProcess = new URLSearchParams(location.search).get("topic") || "";
 
       function showToast(message, error = false) {
         const toast = el("toast");
@@ -118,66 +121,33 @@
         return state?.transition_by_node?.[uuid] || null;
       }
 
-      function applyTransitionClass(element, uuid) {
-        [...element.classList]
-          .filter((name) => name.startsWith("stage-"))
-          .forEach((name) => element.classList.remove(name));
-        element.classList.remove("diff");
-        element.removeAttribute("title");
+      function applyTransitionProjection(element, uuid, markerHost = element) {
+        markerHost.querySelector(":scope > .flow-transition-marker")?.remove();
         const info = transitionInfo(uuid);
-        if (!info || ["settled", "in_flight"].includes(info.stage)) return;
-        element.classList.add("diff", `stage-${info.stage}`);
-        element.title = transitionLabel(info);
+        SovereignUI.decorateTransition(element, info, {marker: false});
+        const marker = SovereignUI.transitionMarker(info, {
+          className: "flow-transition-marker",
+        });
+        if (marker) markerHost.prepend(marker);
       }
 
-      function needsReaction(uuid) {
-        const info = transitionInfo(uuid);
-        return !!info && !["settled", "in_flight"].includes(info.stage);
-      }
-
-      function reactionButton(node) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "react-button";
-        button.textContent = "React";
-        button.setAttribute("aria-label", "React to proposed differences");
+      function nodeReactionControl(node) {
         const info = transitionInfo(node.uuid);
-        if (info) button.title = transitionLabel(info);
-        SovereignUI.actionMenu({
-          button,
-          emptyMessage: "No reaction available",
-          items: () => reactionChoices(node.uuid).map((choice) => ({
-            label: choice.label,
-            onSelect: async () => {
-              const endpoint = choice.action === "rollback"
-                ? "/api/flow/rollback"
-                : "/api/flow/adopt";
-              await run(() => api(endpoint, {
-                node_uuid: node.uuid,
-                source_addr: choice.peer.addr,
-                adopt_absence: choice.action === "adopt" && choice.peer.missing,
-                rollback_absence: choice.action === "rollback" && choice.peer.missing,
-              }), choice.action === "rollback" ? "Change taken back" : "Change adopted");
-            },
-          })),
+        return SovereignUI.reactionControl({
+          info,
+          density: "inline",
+          className: "flow-react",
+          onReact: (choice) => applyReaction(node.uuid, choice),
         });
-        return button;
       }
 
-      function reactionChoices(uuid) {
-        const info = transitionInfo(uuid);
-        const events = info?.events || (info ? [info] : []);
-        return events.map((event) => {
-          const root = state.peers?.[event.peer_addr];
-          return {
-            label: transitionReactionLabel(event),
-            action: event.reaction || "adopt",
-            peer: {
-              addr: event.peer_addr,
-              missing: !(root && findNode(root, uuid)),
-            },
-          };
-        });
+      async function applyReaction(uuid, choice) {
+        await run(() => api("/api/flow/react", {
+          node_uuid: uuid,
+          source_addr: choice.peerAddr,
+          reaction: choice.action,
+          absent: choice.absent,
+        }), choice.action === "rollback" ? "Change taken back" : "Change adopted");
       }
 
       function currentRevision() {
@@ -492,7 +462,7 @@
           const row = document.createElement("div");
           row.className = "person-row";
           const changed = assignments.find((item) => transitionInfo(item.uuid));
-          applyTransitionClass(row, changed?.uuid || assignment.uuid);
+          applyTransitionProjection(row, changed?.uuid || assignment.uuid);
           const text = document.createElement("div");
           const name = document.createElement("strong");
           name.textContent = assignment.person?.name || identityName(identity);
@@ -508,8 +478,13 @@
           text.append(name);
           if (badges.childElementCount) text.append(badges);
           row.append(text);
-          const reaction = assignments.find((item) => needsReaction(item.uuid));
-          if (reaction) row.append(reactionButton(reaction));
+          for (const item of assignments) {
+            const reaction = nodeReactionControl(item);
+            if (reaction) {
+              row.append(reaction);
+              break;
+            }
+          }
           const participantAssignment = assignments.find(
             (item) => item.data.role === "requiredParticipant",
           );
@@ -714,7 +689,7 @@
         const previous = position.last_completed_stage?.name || "Created";
         el("position").textContent = `${previous} → ${current}`;
         el("lifecycle").textContent = state.workflow?.outcome || process.data.lifecycle || "setup";
-        applyTransitionClass(el("processPanel"), process.uuid);
+        applyTransitionProjection(el("processPanel"), process.uuid, el("processTools"));
         if (state.workflow?.can_return_to_setup) {
           const participants = document.createElement("button");
           participants.type = "button";
@@ -747,7 +722,8 @@
           };
           el("processTools").append(back);
         }
-        if (needsReaction(process.uuid)) el("processTools").append(reactionButton(process));
+        const processReaction = nodeReactionControl(process);
+        if (processReaction) el("processTools").append(processReaction);
         renderProposal();
         renderWork();
         renderCurrentStatus();
@@ -774,14 +750,12 @@
           }
           state = await api("/api/flow/process");
           const process = state.process;
-          SovereignShell.setTopicSelector({
-            label: "Process",
-            topics: (state.processes || []).map((item) => ({ uuid: item.uuid, title: item.title })),
-            selectedUuid: process?.uuid,
-            onSelect: async (processUuid) => {
-              await api("/api/flow/processes/select", { process_uuid: processUuid });
-              await refresh();
-            },
+          // The name of this process, and no list of the others: reaching
+          // another one is the Cockpit's, which holds every topic this
+          // client has rather than one application's share of them.
+          SovereignShell.setTopicName({
+            label: "Flow",
+            title: process?.title || "",
             onRename: async (title) => {
               await api("/api/flow/processes/rename", {
                 process_uuid: process.uuid,
@@ -819,6 +793,7 @@
             setPriority: "/api/flow/agenda/set_priority",
             move: "/api/flow/agenda/move",
           },
+          reactNode: (uuid, choice) => applyReaction(uuid, choice),
           onChanged: () => refresh(),
         });
         await refresh();

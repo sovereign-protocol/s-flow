@@ -90,7 +90,7 @@ The first tile shows title, process template, current stage, “required from
 me”, outstanding people, agenda count and divergence/status. Expanded mode can
 show the latest completed step and current work.
 
-S-Cockpit currently has explicit Kanban and Agreement adapters. Adding
+S-Cockpit currently has explicit Initiative and Team adapters. Adding
 a third hard-coded branch is acceptable for the MVP, but it will not scale.
 After this integration proves the common fields, extract a generic versioned
 tile-provider contract rather than changing Cockpit for every future app.
